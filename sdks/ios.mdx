@@ -1,0 +1,594 @@
+---
+title: 'iOS SDK'
+description: 'Native Swift SDK for email validation and device fingerprinting on iOS'
+---
+
+## Overview
+
+The Vouch iOS SDK provides email validation and device fingerprinting for native iOS applications. Built with Swift, it integrates seamlessly with both SwiftUI and UIKit.
+
+<Note>
+  **Package:** `VouchSDK`
+  **Platform:** iOS 15.0+
+  **Language:** Swift 5.9+
+  **Distribution:** Swift Package Manager
+</Note>
+
+## Installation
+
+### Swift Package Manager (Recommended)
+
+#### Via Xcode
+
+1. Open your project in Xcode
+2. Go to **File → Add Package Dependencies**
+3. Enter the repository URL: `https://github.com/vouch-platform/vouch-sdk`
+4. Select version requirements (2.0.0+)
+5. Add VouchSDK to your target
+
+#### Via Package.swift
+
+Add the package dependency to your `Package.swift`:
+
+```swift Package.swift
+dependencies: [
+    .package(url: "https://github.com/vouch-platform/vouch-sdk", from: "2.0.0")
+]
+```
+
+Then add it to your target dependencies:
+
+```swift
+.target(
+    name: "YourTarget",
+    dependencies: ["VouchSDK"]
+)
+```
+
+## Quick Start
+
+```swift
+import VouchSDK
+
+// Initialize the SDK
+let vouch = Vouch(
+    projectId: "your-project-id",
+    apiKey: "your-client-api-key"
+)
+
+// Validate an email
+Task {
+    do {
+        let result = try await vouch.validate("user@example.com")
+
+        if result.success && result.valid == true {
+            print("✓ Email is valid")
+        } else {
+            print("✗ Invalid email: \(result.error ?? "Unknown error")")
+        }
+    } catch {
+        print("Validation error:", error)
+    }
+}
+```
+
+## SwiftUI Integration
+
+### Basic Form Validation
+
+```swift
+import SwiftUI
+import VouchSDK
+
+struct SignUpView: View {
+    @State private var email = ""
+    @State private var isValidating = false
+    @State private var validationMessage: String?
+    @State private var isValid = false
+
+    let vouch = Vouch(
+        projectId: "your-project-id",
+        apiKey: "your-client-api-key"
+    )
+
+    var body: some View {
+        VStack(spacing: 20) {
+            TextField("Email Address", text: $email)
+                .textFieldStyle(.roundedBorder)
+                .autocapitalization(.none)
+                .keyboardType(.emailAddress)
+                .textContentType(.emailAddress)
+
+            Button("Sign Up") {
+                validateEmail()
+            }
+            .disabled(isValidating || email.isEmpty)
+
+            if let message = validationMessage {
+                Text(message)
+                    .foregroundColor(isValid ? .green : .red)
+                    .font(.caption)
+            }
+
+            if isValidating {
+                ProgressView()
+            }
+        }
+        .padding()
+    }
+
+    func validateEmail() {
+        isValidating = true
+        validationMessage = nil
+
+        Task {
+            do {
+                let result = try await vouch.validate(email)
+
+                await MainActor.run {
+                    isValidating = false
+
+                    if result.success && result.valid == true {
+                        isValid = true
+                        validationMessage = "✓ Valid email"
+                        // Proceed with sign-up
+                    } else {
+                        isValid = false
+                        validationMessage = result.error ?? "Email validation failed"
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isValidating = false
+                    isValid = false
+                    validationMessage = "Error: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+}
+```
+
+### Real-Time Validation
+
+```swift
+import SwiftUI
+import VouchSDK
+import Combine
+
+struct RealtimeEmailField: View {
+    @State private var email = ""
+    @State private var validationState: ValidationState = .idle
+    @State private var cancellable: AnyCancellable?
+
+    let vouch = Vouch(projectId: "your-project-id", apiKey: "your-client-api-key")
+
+    enum ValidationState {
+        case idle
+        case validating
+        case valid
+        case invalid(String)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            HStack {
+                TextField("Email", text: $email)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: email) { _, newValue in
+                        scheduleValidation(email: newValue)
+                    }
+
+                switch validationState {
+                case .idle:
+                    EmptyView()
+                case .validating:
+                    ProgressView()
+                        .scaleEffect(0.7)
+                case .valid:
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                case .invalid:
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.red)
+                }
+            }
+
+            if case .invalid(let message) = validationState {
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+        }
+    }
+
+    func scheduleValidation(email: String) {
+        cancellable?.cancel()
+
+        guard !email.isEmpty else {
+            validationState = .idle
+            return
+        }
+
+        validationState = .validating
+
+        cancellable = Just(email)
+            .delay(for: .milliseconds(500), scheduler: RunLoop.main)
+            .sink { emailToValidate in
+                Task {
+                    do {
+                        let result = try await vouch.validate(emailToValidate)
+
+                        await MainActor.run {
+                            if result.success && result.valid == true {
+                                validationState = .valid
+                            } else {
+                                validationState = .invalid(result.error ?? "Invalid email")
+                            }
+                        }
+                    } catch {
+                        await MainActor.run {
+                            validationState = .invalid(error.localizedDescription)
+                        }
+                    }
+                }
+            }
+    }
+}
+```
+
+## UIKit Integration
+
+### Basic Usage
+
+```swift
+import UIKit
+import VouchSDK
+
+class SignUpViewController: UIViewController {
+    let vouch = Vouch(
+        projectId: "your-project-id",
+        apiKey: "your-client-api-key"
+    )
+
+    @IBOutlet weak var emailTextField: UITextField!
+    @IBOutlet weak var signUpButton: UIButton!
+    @IBOutlet weak var resultLabel: UILabel!
+
+    @IBAction func signUpButtonTapped(_ sender: UIButton) {
+        guard let email = emailTextField.text, !email.isEmpty else {
+            resultLabel.text = "Please enter an email address"
+            resultLabel.textColor = .systemRed
+            return
+        }
+
+        signUpButton.isEnabled = false
+        resultLabel.text = "Validating..."
+        resultLabel.textColor = .systemGray
+
+        Task {
+            do {
+                let result = try await vouch.validate(email)
+
+                await MainActor.run {
+                    signUpButton.isEnabled = true
+
+                    if result.success && result.valid == true {
+                        resultLabel.text = "✓ Valid email"
+                        resultLabel.textColor = .systemGreen
+                        // Proceed with sign-up
+                    } else {
+                        resultLabel.text = result.error ?? "Invalid email"
+                        resultLabel.textColor = .systemRed
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    signUpButton.isEnabled = true
+                    resultLabel.text = "Error: \(error.localizedDescription)"
+                    resultLabel.textColor = .systemRed
+                }
+            }
+        }
+    }
+}
+```
+
+## Configuration
+
+### Custom Options
+
+```swift
+import VouchSDK
+
+let options = VouchOptions(
+    endpoint: "https://api.vouch.expert",
+    version: .version(1),  // Use /v1/ endpoint
+    fingerprintOptions: FingerprintOptions(
+        enableFonts: true  // Enable font fingerprinting (slower but more unique)
+    )
+)
+
+let vouch = Vouch(
+    projectId: "your-project-id",
+    apiKey: "your-client-api-key",
+    options: options
+)
+```
+
+### API Version
+
+Control which API version to use:
+
+```swift
+// Use latest (unversioned) endpoint
+let options = VouchOptions(version: .latest)
+
+// Use specific version
+let options = VouchOptions(version: .version(1))  // Uses /v1/
+```
+
+## Core Methods
+
+### validate()
+
+Validate an email address with automatic device fingerprinting:
+
+```swift
+let result = try await vouch.validate("user@example.com")
+
+// Check validation result
+if result.success && result.valid == true {
+    print("Valid email:", result.email ?? "")
+} else {
+    print("Invalid:", result.error ?? "Unknown error")
+}
+```
+
+**Returns:** `ValidationResult`
+
+<ResponseField name="success" type="Bool">
+  Whether the API call was successful
+</ResponseField>
+
+<ResponseField name="valid" type="Bool?">
+  Whether the email is valid (nil if success is false)
+</ResponseField>
+
+<ResponseField name="email" type="String?">
+  The normalized email address
+</ResponseField>
+
+<ResponseField name="error" type="String?">
+  Error message if validation failed
+</ResponseField>
+
+<ResponseField name="data" type="AnyCodable?">
+  Complete server response data
+</ResponseField>
+
+<ResponseField name="statusCode" type="Int?">
+  HTTP status code
+</ResponseField>
+
+### generateFingerprint()
+
+Get the device fingerprint directly without validating an email:
+
+```swift
+let fingerprint = try await vouch.generateFingerprint()
+
+print("Device:", fingerprint.hardware.deviceModel)
+print("Screen:", "\(fingerprint.hardware.screenWidth)x\(fingerprint.hardware.screenHeight)")
+print("OS:", fingerprint.system.osVersion)
+print("Fonts:", fingerprint.fonts.fonts.count)
+```
+
+**Returns:** `Fingerprint` with the following signals:
+
+<ResponseField name="hardware" type="HardwareSignals">
+  Device hardware information (screen, CPU, memory, model)
+</ResponseField>
+
+<ResponseField name="fonts" type="FontSignals">
+  System fonts and SHA-256 hash
+</ResponseField>
+
+<ResponseField name="system" type="SystemSignals">
+  iOS version, language, locale, timezone
+</ResponseField>
+
+<ResponseField name="storage" type="StorageSignals">
+  UserDefaults, Keychain, FileSystem availability
+</ResponseField>
+
+<ResponseField name="timestamp" type="Int64">
+  Unix timestamp in milliseconds
+</ResponseField>
+
+<ResponseField name="version" type="String">
+  SDK version (e.g., "2.0.0")
+</ResponseField>
+
+## Error Handling
+
+The SDK uses Swift's native error handling:
+
+```swift
+do {
+    let result = try await vouch.validate(email)
+
+    if result.success && result.valid == true {
+        // Email is valid
+    } else {
+        // Email is invalid
+        print("Error:", result.error ?? "Unknown error")
+    }
+} catch VouchError.fingerprintGenerationFailed(let error) {
+    print("Fingerprint generation failed:", error)
+} catch VouchError.networkError(let error) {
+    print("Network error:", error)
+} catch {
+    print("Unexpected error:", error)
+}
+```
+
+### Common Errors
+
+| Error | Description | Solution |
+|-------|-------------|----------|
+| `fingerprintGenerationFailed` | Device fingerprint could not be generated | Check device capabilities |
+| `networkError` | Network request failed | Check internet connection |
+| `invalidResponse` | API returned unexpected data | Verify API key and project ID |
+
+## Privacy & Permissions
+
+### No Permissions Required
+
+The Vouch iOS SDK **does not require any device permissions**. It only accesses publicly available system APIs.
+
+<Warning>
+  **Important:** No Info.plist usage descriptions are required. The SDK works without requesting any permissions from the user.
+</Warning>
+
+**No permissions needed for:**
+- ❌ Location
+- ❌ Camera/Photos
+- ❌ Contacts
+- ❌ Microphone
+- ❌ Bluetooth
+
+### Data Collection
+
+The SDK collects device fingerprint data for fraud prevention. You must disclose this in:
+
+1. **Your app's privacy policy**
+2. **App Store privacy nutrition label**
+3. **GDPR/CCPA notices** (if applicable)
+
+**What data is collected:**
+- Hardware signals: Screen dimensions, CPU cores, memory, device model
+- Font signals: System fonts and SHA-256 hash
+- System signals: iOS version, language, locale, timezone
+- Storage signals: UserDefaults, Keychain, FileSystem availability
+
+<Info>
+  No personally identifiable information (PII) is collected. All data is technical device and system information.
+</Info>
+
+## Performance
+
+- **Fingerprint Generation:** ~100-500ms (first time)
+- **Email Validation:** Instant local validation + network request time
+- **Font Collection:** ~200-1000ms (can be disabled)
+
+<Tip>
+  The SDK starts fingerprint generation immediately when initialized, so the first `validate()` call can reuse the cached fingerprint.
+</Tip>
+
+## Best Practices
+
+### 1. Initialize Early
+
+Initialize the SDK as early as possible to allow fingerprint generation to complete:
+
+```swift
+@main
+struct YourApp: App {
+    let vouch = Vouch(projectId: "...", apiKey: "...")
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .environmentObject(vouch)
+        }
+    }
+}
+```
+
+### 2. Handle Errors Gracefully
+
+Always handle validation errors without blocking the user:
+
+```swift
+do {
+    let result = try await vouch.validate(email)
+
+    if result.success && result.valid == true {
+        // Proceed
+    } else {
+        // Show user-friendly error
+        showError(result.error ?? "Please check your email")
+    }
+} catch {
+    // Don't block the user, allow them to proceed or retry
+    showError("Validation unavailable, please try again")
+}
+```
+
+### 3. Use Environment Objects (SwiftUI)
+
+Share the Vouch instance across your app using environment objects:
+
+```swift
+ContentView()
+    .environmentObject(vouch)
+
+// Then in child views:
+@EnvironmentObject var vouch: Vouch
+```
+
+## API Reference
+
+### Vouch
+
+Main SDK class for email validation and fingerprinting.
+
+```swift
+public class Vouch {
+    public init(projectId: String, apiKey: String, options: VouchOptions = VouchOptions())
+
+    public func validate(_ email: String) async throws -> ValidationResult
+    public func generateFingerprint() async throws -> Fingerprint
+}
+```
+
+### VouchOptions
+
+SDK configuration options.
+
+```swift
+public struct VouchOptions {
+    public let endpoint: String  // Default: "https://api.vouch.expert"
+    public let version: APIVersion  // Default: .latest
+    public let fingerprintOptions: FingerprintOptions
+}
+```
+
+### APIVersion
+
+API version specification.
+
+```swift
+public enum APIVersion {
+    case latest  // Unversioned endpoint
+    case version(Int)  // Versioned endpoint (e.g., /v1/)
+}
+```
+
+### FingerprintOptions
+
+Fingerprint collection configuration.
+
+```swift
+public struct FingerprintOptions {
+    public let enableFonts: Bool  // Default: true (~200-1000ms)
+}
+```
+
+## Support
+
+For issues and questions:
+- **GitHub:** [github.com/vouch-platform/vouch-sdk](https://github.com/vouch-platform/vouch-sdk)
+- **Email:** support@vouch.expert
+- **Documentation:** [docs.vouch.expert](https://docs.vouch.expert)

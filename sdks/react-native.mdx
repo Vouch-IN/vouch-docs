@@ -1,0 +1,671 @@
+---
+title: 'React Native SDK'
+description: 'React Native SDK for email validation and device fingerprinting on iOS and Android'
+---
+
+## Overview
+
+The Vouch React Native SDK provides email validation and device fingerprinting for React Native applications. It bridges to native iOS (Swift) and Android (Kotlin) SDKs for optimal signal collection and performance.
+
+<Note>
+  **Package:** `@vouch/react-native`
+  **Platform:** iOS 15.0+ & Android 8.0+ (API 26+)
+  **React Native:** 0.60.0+
+  **Distribution:** npm/yarn/pnpm
+</Note>
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install @vouch/react-native
+```
+
+```bash yarn
+yarn add @vouch/react-native
+```
+
+```bash pnpm
+pnpm add @vouch/react-native
+```
+</CodeGroup>
+
+### iOS Setup
+
+Install iOS dependencies:
+
+```bash
+cd ios && pod install
+```
+
+### Android Setup
+
+No additional setup required. The SDK includes all necessary native modules.
+
+### Permissions
+
+Add internet permission to your `AndroidManifest.xml` (Android only):
+
+```xml AndroidManifest.xml
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
+<Info>
+  **No permissions required on iOS.** The SDK only needs internet access on Android.
+</Info>
+
+## Quick Start
+
+### Wrap Your App
+
+Wrap your app with `VouchProvider`:
+
+```tsx App.tsx
+import { VouchProvider } from '@vouch/react-native';
+
+export default function App() {
+  return (
+    <VouchProvider
+      projectId="your-project-id"
+      apiKey="your-client-api-key"
+    >
+      <YourApp />
+    </VouchProvider>
+  );
+}
+```
+
+### Validate Email
+
+Use the `useValidateEmail` hook:
+
+```tsx
+import { useValidateEmail } from '@vouch/react-native';
+import { View, TextInput, Button, Text } from 'react-native';
+import { useState } from 'react';
+
+function EmailForm() {
+  const { validate, loading, result } = useValidateEmail();
+  const [email, setEmail] = useState('');
+
+  const handleSubmit = async () => {
+    const result = await validate(email);
+
+    if (result.success && result.valid) {
+      console.log('✓ Valid email');
+    } else {
+      console.log('✗ Invalid email:', result.error);
+    }
+  };
+
+  return (
+    <View>
+      <TextInput
+        value={email}
+        onChangeText={setEmail}
+        placeholder="Email address"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        editable={!loading}
+      />
+      <Button
+        title={loading ? 'Validating...' : 'Validate'}
+        onPress={handleSubmit}
+        disabled={loading}
+      />
+      {result && (
+        <Text>{result.success ? '✓ Valid' : `✗ ${result.error}`}</Text>
+      )}
+    </View>
+  );
+}
+```
+
+## Hooks
+
+### useValidateEmail
+
+Hook for email validation with loading and error states:
+
+```tsx
+import { useValidateEmail } from '@vouch/react-native';
+import { View, TextInput, Button, Text, ActivityIndicator } from 'react-native';
+import { useState } from 'react';
+
+function SignUpForm() {
+  const { validate, loading, result, error, reset } = useValidateEmail();
+  const [email, setEmail] = useState('');
+
+  const handleValidate = async () => {
+    const result = await validate(email);
+
+    if (result.success && result.valid) {
+      // Proceed with sign-up
+      console.log('Valid email:', result.email);
+    }
+  };
+
+  return (
+    <View style={{ padding: 20 }}>
+      <TextInput
+        value={email}
+        onChangeText={(text) => {
+          setEmail(text);
+          reset(); // Clear previous results
+        }}
+        placeholder="Enter your email"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        style={{
+          borderWidth: 1,
+          borderColor: '#ccc',
+          padding: 10,
+          borderRadius: 5,
+        }}
+      />
+
+      <Button
+        title={loading ? 'Validating...' : 'Sign Up'}
+        onPress={handleValidate}
+        disabled={loading || !email}
+      />
+
+      {loading && <ActivityIndicator style={{ marginTop: 10 }} />}
+
+      {result && !loading && (
+        <Text
+          style={{
+            marginTop: 10,
+            color: result.success && result.valid ? 'green' : 'red',
+          }}
+        >
+          {result.success && result.valid
+            ? '✓ Email is valid'
+            : `✗ ${result.error || 'Invalid email'}`}
+        </Text>
+      )}
+    </View>
+  );
+}
+```
+
+**Returns:**
+
+<ResponseField name="result" type="ValidationResult | null">
+  Current validation result (null if not validated yet)
+</ResponseField>
+
+<ResponseField name="loading" type="boolean">
+  Whether a validation request is in progress
+</ResponseField>
+
+<ResponseField name="error" type="Error | null">
+  Error that occurred during validation
+</ResponseField>
+
+<ResponseField name="validate" type="(email: string) => Promise<ValidationResult>">
+  Function to validate an email address
+</ResponseField>
+
+<ResponseField name="reset" type="() => void">
+  Reset the validation state
+</ResponseField>
+
+### useFingerprint
+
+Hook to generate device fingerprint:
+
+```tsx
+import { useFingerprint } from '@vouch/react-native';
+import { View, Button, Text, ScrollView } from 'react-native';
+
+function DeviceInfo() {
+  const { fingerprint, loading, error, generate } = useFingerprint();
+
+  return (
+    <View style={{ padding: 20 }}>
+      <Button
+        title={loading ? 'Generating...' : 'Generate Fingerprint'}
+        onPress={generate}
+        disabled={loading}
+      />
+
+      {error && <Text style={{ color: 'red' }}>Error: {error.message}</Text>}
+
+      {fingerprint && (
+        <ScrollView style={{ marginTop: 20 }}>
+          <Text>Device: {fingerprint.hardware.deviceModel}</Text>
+          <Text>Screen: {fingerprint.hardware.screenWidth}x{fingerprint.hardware.screenHeight}</Text>
+          <Text>OS: {fingerprint.system.osVersion}</Text>
+          <Text>Fonts: {fingerprint.fonts.fonts.length}</Text>
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+```
+
+**Returns:**
+
+<ResponseField name="fingerprint" type="Fingerprint | null">
+  Generated device fingerprint (null if not generated yet)
+</ResponseField>
+
+<ResponseField name="loading" type="boolean">
+  Whether fingerprint generation is in progress
+</ResponseField>
+
+<ResponseField name="error" type="Error | null">
+  Error that occurred during generation
+</ResponseField>
+
+<ResponseField name="generate" type="() => Promise<Fingerprint>">
+  Function to generate device fingerprint
+</ResponseField>
+
+### useVouch
+
+Hook to access the Vouch instance directly:
+
+```tsx
+import { useVouch } from '@vouch/react-native';
+
+function CustomComponent() {
+  const vouch = useVouch();
+
+  const handleCustomValidation = async () => {
+    const result = await vouch.validate('user@example.com');
+    console.log(result);
+
+    const fingerprint = await vouch.generateFingerprint();
+    console.log(fingerprint);
+  };
+
+  return (
+    <Button title="Custom Validation" onPress={handleCustomValidation} />
+  );
+}
+```
+
+**Returns:** `Vouch` instance
+
+## Advanced Usage
+
+### Real-Time Validation
+
+Validate as the user types with debouncing:
+
+```tsx
+import { useValidateEmail } from '@vouch/react-native';
+import { View, TextInput, Text } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+
+function RealtimeEmailInput() {
+  const { validate, loading, result } = useValidateEmail();
+  const [email, setEmail] = useState('');
+  const timeoutRef = useRef<NodeJS.Timeout>();
+
+  useEffect(() => {
+    if (!email) return;
+
+    // Clear previous timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    // Debounce validation
+    timeoutRef.current = setTimeout(() => {
+      validate(email);
+    }, 500);
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [email]);
+
+  return (
+    <View style={{ padding: 20 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <TextInput
+          value={email}
+          onChangeText={setEmail}
+          placeholder="Email address"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          style={{
+            flex: 1,
+            borderWidth: 1,
+            borderColor: result?.valid ? 'green' : '#ccc',
+            padding: 10,
+            borderRadius: 5,
+          }}
+        />
+        {loading && <Text>⏳</Text>}
+        {result?.valid && !loading && <Text>✓</Text>}
+        {result && !result.valid && !loading && <Text>✗</Text>}
+      </View>
+
+      {result && !result.valid && !loading && (
+        <Text style={{ color: 'red', marginTop: 5 }}>
+          {result.error}
+        </Text>
+      )}
+    </View>
+  );
+}
+```
+
+### Custom Options
+
+Configure the SDK with custom options:
+
+```tsx App.tsx
+import { VouchProvider } from '@vouch/react-native';
+
+export default function App() {
+  return (
+    <VouchProvider
+      projectId="your-project-id"
+      apiKey="your-client-api-key"
+      options={{
+        endpoint: 'https://api.vouch.expert',
+        version: 1,  // Use /v1/ endpoint
+        fingerprintOptions: {
+          enableFonts: true,
+        },
+      }}
+    >
+      <YourApp />
+    </VouchProvider>
+  );
+}
+```
+
+### Form Integration
+
+Integrate with popular form libraries:
+
+```tsx
+import { useValidateEmail } from '@vouch/react-native';
+import { View, TextInput, Button, Text } from 'react-native';
+import { useState } from 'react';
+
+function RegistrationForm() {
+  const { validate, loading } = useValidateEmail();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    setFormSubmitting(true);
+    setEmailError(null);
+
+    // Validate email first
+    const result = await validate(email);
+
+    if (!result.success || !result.valid) {
+      setEmailError(result.error || 'Invalid email');
+      setFormSubmitting(false);
+      return;
+    }
+
+    // Proceed with registration
+    try {
+      await registerUser(email, password);
+      console.log('Registration successful');
+    } catch (error) {
+      console.error('Registration failed:', error);
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
+  return (
+    <View style={{ padding: 20 }}>
+      <TextInput
+        value={email}
+        onChangeText={setEmail}
+        placeholder="Email"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        style={{
+          borderWidth: 1,
+          borderColor: emailError ? 'red' : '#ccc',
+          padding: 10,
+          borderRadius: 5,
+          marginBottom: 10,
+        }}
+      />
+      {emailError && (
+        <Text style={{ color: 'red', marginBottom: 10 }}>{emailError}</Text>
+      )}
+
+      <TextInput
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Password"
+        secureTextEntry
+        style={{
+          borderWidth: 1,
+          borderColor: '#ccc',
+          padding: 10,
+          borderRadius: 5,
+          marginBottom: 20,
+        }}
+      />
+
+      <Button
+        title={loading || formSubmitting ? 'Submitting...' : 'Register'}
+        onPress={handleSubmit}
+        disabled={loading || formSubmitting || !email || !password}
+      />
+    </View>
+  );
+}
+
+async function registerUser(email: string, password: string) {
+  // Your registration logic here
+}
+```
+
+## API Reference
+
+### VouchProvider
+
+Provider component that initializes the Vouch SDK.
+
+```tsx
+<VouchProvider
+  projectId="your-project-id"
+  apiKey="your-client-api-key"
+  options={{
+    endpoint: "https://api.vouch.expert",
+    version: 1,
+    fingerprintOptions: { enableFonts: true },
+  }}
+>
+  {children}
+</VouchProvider>
+```
+
+**Props:**
+
+<ParamField path="projectId" type="string" required>
+  Your Vouch project ID
+</ParamField>
+
+<ParamField path="apiKey" type="string" required>
+  Your Vouch client API key
+</ParamField>
+
+<ParamField path="options" type="VouchOptions">
+  Optional SDK configuration
+</ParamField>
+
+### ValidationResult
+
+Email validation response:
+
+```typescript
+interface ValidationResult {
+  success: boolean;      // Whether the API call was successful
+  valid?: boolean;       // Whether the email is valid
+  email?: string;        // Normalized email address
+  error?: string;        // Error message if validation failed
+  data?: any;           // Complete server response data
+  statusCode?: number;   // HTTP status code
+}
+```
+
+### Fingerprint
+
+Device fingerprint data:
+
+```typescript
+interface Fingerprint {
+  hardware: HardwareSignals;    // Device hardware info
+  fonts: FontSignals;           // System fonts
+  system: SystemSignals;        // OS info (BrowserSignals on iOS/Android)
+  storage: StorageSignals;      // Storage availability
+  timestamp: number;            // Unix timestamp (ms)
+  version: string;              // SDK version
+}
+```
+
+## Platform-Specific Considerations
+
+### iOS
+
+- **No permissions required**
+- Uses native Swift SDK for fingerprinting
+- Font collection takes ~200-1000ms (can be disabled)
+- Supports iOS 15.0+
+
+### Android
+
+- **Requires INTERNET permission**
+- Uses native Kotlin SDK for fingerprinting
+- Font collection takes ~200-1000ms (can be disabled)
+- Supports Android 8.0+ (API 26+)
+- ProGuard/R8 compatible (rules included automatically)
+
+## Error Handling
+
+Always handle validation errors gracefully:
+
+```tsx
+const { validate, loading, result, error } = useValidateEmail();
+
+const handleValidate = async () => {
+  const result = await validate(email);
+
+  if (error) {
+    // Network or SDK error
+    console.error('Validation error:', error);
+    showToast('Validation unavailable, please try again');
+    return;
+  }
+
+  if (!result.success || !result.valid) {
+    // Email is invalid
+    showError(result.error || 'Please check your email');
+    return;
+  }
+
+  // Email is valid
+  proceedWithSignup();
+};
+```
+
+## Performance
+
+- **Fingerprint Generation:** ~100-500ms (first time)
+- **Email Validation:** Instant local validation + network request time
+- **Font Collection:** ~200-1000ms (can be disabled)
+
+<Tip>
+  The SDK starts fingerprint generation when `VouchProvider` mounts, so the first validation can reuse the cached fingerprint.
+</Tip>
+
+## Privacy & Permissions
+
+### Data Collection
+
+The SDK collects device fingerprint data for fraud prevention. You must disclose this in:
+
+1. **Your app's privacy policy**
+2. **App Store privacy nutrition label (iOS)**
+3. **Google Play Data Safety form (Android)**
+4. **GDPR/CCPA notices** (if applicable)
+
+**What data is collected:**
+- Hardware signals: Screen dimensions, CPU cores, memory, device model
+- Font signals: System fonts and SHA-256 hash
+- System signals: OS version, language, locale, timezone
+- Storage signals: Storage availability checks
+
+<Info>
+  No personally identifiable information (PII) is collected. All data is technical device and system information.
+</Info>
+
+## Best Practices
+
+### 1. Initialize Early
+
+Place `VouchProvider` at the top level of your app:
+
+```tsx
+// ✓ Good - Top level
+<VouchProvider projectId="..." apiKey="...">
+  <NavigationContainer>
+    <App />
+  </NavigationContainer>
+</VouchProvider>
+
+// ✗ Bad - Too deep
+<NavigationContainer>
+  <VouchProvider projectId="..." apiKey="...">
+    <App />
+  </VouchProvider>
+</NavigationContainer>
+```
+
+### 2. Handle Errors Gracefully
+
+Don't block users due to validation failures:
+
+```tsx
+const result = await validate(email);
+
+if (!result.success || !result.valid) {
+  // Show error but allow retry
+  showError(result.error || 'Please check your email');
+} else {
+  // Proceed
+  submitForm();
+}
+```
+
+### 3. Use Debouncing for Real-Time Validation
+
+Avoid excessive API calls:
+
+```tsx
+useEffect(() => {
+  const timeout = setTimeout(() => {
+    if (email) validate(email);
+  }, 500); // 500ms debounce
+
+  return () => clearTimeout(timeout);
+}, [email]);
+```
+
+## Support
+
+For issues and questions:
+- **GitHub:** [github.com/vouch-platform/vouch-sdk](https://github.com/vouch-platform/vouch-sdk)
+- **Email:** support@vouch.expert
+- **Documentation:** [docs.vouch.expert](https://docs.vouch.expert)
