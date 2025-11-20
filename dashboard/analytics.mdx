@@ -1,0 +1,654 @@
+---
+title: 'Analytics Dashboard'
+description: 'Understanding your Vouch analytics and insights'
+---
+
+## Overview
+
+The Vouch analytics dashboard provides comprehensive insights into your email validation patterns, fraud detection effectiveness, and API usage. Track validation results, identify trends, and optimize your configuration.
+
+## Dashboard Overview
+
+### Key Metrics
+
+<CardGroup cols={4}>
+  <Card title="Total Validations" icon="envelope">
+    **45,892**
+
+    ↑ 12.3% from last period
+  </Card>
+
+  <Card title="Block Rate" icon="ban" color="#ef4444">
+    **8.3%**
+
+    ↓ 2.1% from last period
+  </Card>
+
+  <Card title="Flag Rate" icon="flag" color="#f59e0b">
+    **15.7%**
+
+    ↑ 3.2% from last period
+  </Card>
+
+  <Card title="Allow Rate" icon="check" color="#10b981">
+    **76.0%**
+
+    ↓ 1.1% from last period
+  </Card>
+</CardGroup>
+
+### Time Period Selector
+
+View analytics for different time ranges:
+
+```
+Quick Ranges:
+- Last 24 hours
+- Last 7 days
+- Last 30 days
+- Last 90 days
+
+Custom Range:
+- From: 2024-01-01
+- To: 2024-01-31
+```
+
+## Validation Insights
+
+### Recommendations Breakdown
+
+See how many emails were allowed, flagged, or blocked:
+
+```
+Recommendations (Last 30 days):
+
+Allow: 34,878 (76.0%)
+████████████████████████████████████████░░░░░░░░░
+
+Flag: 7,206 (15.7%)
+████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+Block: 3,808 (8.3%)
+███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+Total: 45,892
+```
+
+### Validation Types Performance
+
+Track which validation checks are failing most:
+
+<Tabs>
+  <Tab title="Chart View">
+    ```
+    Validation Failures (Last 30 days):
+
+    Disposable Email:  2,145 (47%)  ████████████████░░░░░░░░░░░░░░░░
+    MX Records:       1,234 (27%)  █████████████░░░░░░░░░░░░░░░░░░░
+    Role Email:         892 (20%)  █████████░░░░░░░░░░░░░░░░░░░░░░░
+    Catch-all:          456 (10%)  █████░░░░░░░░░░░░░░░░░░░░░░░░░░░
+    SMTP:               389 (9%)   ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+    Syntax:             234 (5%)   ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+    Alias:              178 (4%)   ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+    IP Reputation:      145 (3%)   █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+    Device Fingerprint:  89 (2%)   █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+    ```
+  </Tab>
+
+  <Tab title="Table View">
+    | Validation Type | Failures | % of Total | Trend |
+    |----------------|----------|-----------|-------|
+    | Disposable | 2,145 | 47% | ↑ 5% |
+    | MX Records | 1,234 | 27% | ↓ 2% |
+    | Role Email | 892 | 20% | → 0% |
+    | Catch-all | 456 | 10% | ↑ 3% |
+    | SMTP | 389 | 9% | ↓ 1% |
+    | Syntax | 234 | 5% | ↓ 4% |
+    | Alias | 178 | 4% | ↑ 1% |
+    | IP Reputation | 145 | 3% | ↑ 2% |
+    | Device Fingerprint | 89 | 2% | ↑ 1% |
+  </Tab>
+
+  <Tab title="Insights">
+    **Key Findings:**
+
+    🔍 **High disposable email rate (47%)**
+    - Consider stricter blocking
+    - May indicate bot activity
+    - Review signup flow
+
+    📊 **MX failures declining (-2%)**
+    - Good sign of email quality improving
+    - Users entering valid domains
+
+    ⚠️ **Catch-all increasing (+3%)**
+    - Monitor for abuse patterns
+    - Consider flagging instead of allowing
+
+    ✅ **Overall quality improving**
+    - Block rate down 2.1%
+    - Allow rate stable at 76%
+  </Tab>
+</Tabs>
+
+## Geographic Analytics
+
+### Validations by Country
+
+See where your validation requests originate:
+
+<Tabs>
+  <Tab title="Map View">
+    ```
+    Global Distribution:
+
+    🇺🇸 United States    24,567 (53.5%)
+    🇬🇧 United Kingdom    7,234 (15.8%)
+    🇨🇦 Canada            3,456 (7.5%)
+    🇦🇺 Australia         2,891 (6.3%)
+    🇩🇪 Germany           2,234 (4.9%)
+    🇫🇷 France            1,789 (3.9%)
+    🇯🇵 Japan             1,234 (2.7%)
+    🇧🇷 Brazil              987 (2.2%)
+    🇮🇳 India               892 (1.9%)
+    🌍 Other                608 (1.3%)
+    ```
+  </Tab>
+
+  <Tab title="Threat Analysis">
+    **High-Risk Countries:**
+
+    | Country | Validations | Block Rate | Flag Rate |
+    |---------|-------------|------------|-----------|
+    | Nigeria | 234 | 67% | 28% |
+    | Russia | 189 | 45% | 32% |
+    | China | 156 | 38% | 41% |
+    | Vietnam | 123 | 52% | 29% |
+
+    **Low-Risk Countries:**
+
+    | Country | Validations | Block Rate | Flag Rate |
+    |---------|-------------|------------|-----------|
+    | United States | 24,567 | 6% | 12% |
+    | United Kingdom | 7,234 | 5% | 11% |
+    | Canada | 3,456 | 4% | 10% |
+    | Australia | 2,891 | 5% | 13% |
+  </Tab>
+
+  <Tab title="Continental">
+    ```
+    By Continent:
+
+    North America:  28,023 (61.0%)
+    Europe:         12,456 (27.1%)
+    Asia:            3,892 (8.5%)
+    Oceania:         2,891 (6.3%)
+    South America:   1,234 (2.7%)
+    Africa:            396 (0.9%)
+    ```
+  </Tab>
+</Tabs>
+
+### IP Reputation Insights
+
+Analyze IP-based threats:
+
+```yaml
+IP Analysis (Last 30 days):
+
+VPN Detection:        1,234 requests (2.7%)
+  - Blocked: 45%
+  - Flagged: 55%
+
+Tor Network:            89 requests (0.2%)
+  - Blocked: 100%
+
+Proxy Servers:         456 requests (1.0%)
+  - Blocked: 67%
+  - Flagged: 33%
+
+Data Centers:          234 requests (0.5%)
+  - Blocked: 23%
+  - Flagged: 77%
+
+Residential IPs:    43,879 requests (95.6%)
+  - Block Rate: 7%
+  - Flag Rate: 14%
+```
+
+## Device Analytics
+
+### Device Types
+
+Track validation requests by device:
+
+<CardGroup cols={3}>
+  <Card title="Desktop" icon="desktop">
+    **27,535** (60%)
+
+    Average block rate: 6.2%
+  </Card>
+
+  <Card title="Mobile" icon="mobile">
+    **15,892** (34.6%)
+
+    Average block rate: 9.8%
+  </Card>
+
+  <Card title="Tablet" icon="tablet">
+    **2,465** (5.4%)
+
+    Average block rate: 5.1%
+  </Card>
+</CardGroup>
+
+### Browser Distribution
+
+```
+Browsers (Desktop):
+
+Chrome:   15,642 (56.8%)  ████████████████████████████░░░░░░░░░░
+Safari:    7,234 (26.3%)  █████████████░░░░░░░░░░░░░░░░░░░░░░░░░
+Firefox:   3,456 (12.5%)  ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+Edge:        892 (3.2%)   █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+Other:       311 (1.1%)   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+```
+
+### Operating Systems
+
+```
+Operating Systems:
+
+Windows:   16,234 (35.4%)
+iOS:       12,456 (27.1%)
+macOS:     10,892 (23.7%)
+Android:    5,234 (11.4%)
+Linux:        892 (1.9%)
+Other:        184 (0.4%)
+```
+
+### Device Fingerprint Insights
+
+Multi-device detection:
+
+```yaml
+Device Fingerprint Analysis:
+
+Unique Devices: 34,567
+Devices with Multiple Emails: 2,891 (8.4%)
+
+High-Risk Devices (5+ emails):
+  - Device #1: 47 emails validated
+    Block Rate: 89%
+    Countries: Nigeria, Russia, China
+
+  - Device #2: 32 emails validated
+    Block Rate: 75%
+    Pattern: Disposable emails
+
+  - Device #3: 28 emails validated
+    Block Rate: 82%
+    Pattern: Role emails
+
+Low-Risk Devices (1-2 emails):
+  - 31,676 devices (91.6%)
+  - Average block rate: 5.2%
+```
+
+## Threat Intelligence
+
+### Fraud Patterns
+
+Identify fraud patterns:
+
+<Tabs>
+  <Tab title="Disposable Domains">
+    **Top Disposable Domains Detected:**
+
+    | Domain | Count | % of Total |
+    |--------|-------|------------|
+    | tempmail.com | 567 | 26.4% |
+    | guerrillamail.com | 432 | 20.1% |
+    | 10minutemail.com | 289 | 13.5% |
+    | mailinator.com | 234 | 10.9% |
+    | throwaway.email | 189 | 8.8% |
+    | Other domains | 434 | 20.2% |
+
+    **Total Disposable Emails Blocked:** 2,145
+  </Tab>
+
+  <Tab title="Role Emails">
+    **Top Role Patterns:**
+
+    | Pattern | Count | % of Total |
+    |---------|-------|------------|
+    | admin@ | 234 | 26.2% |
+    | info@ | 189 | 21.2% |
+    | support@ | 156 | 17.5% |
+    | contact@ | 123 | 13.8% |
+    | noreply@ | 98 | 11.0% |
+    | Other roles | 92 | 10.3% |
+
+    **Total Role Emails:** 892
+  </Tab>
+
+  <Tab title="Catch-all Domains">
+    **Top Catch-all Domains:**
+
+    | Domain | Count | Valid Emails |
+    |--------|-------|--------------|
+    | company-a.com | 89 | Unknown |
+    | startup-b.io | 67 | Unknown |
+    | business-c.net | 54 | Unknown |
+
+    **Note:** Catch-all domains accept all emails, making it impossible to verify if the specific mailbox exists.
+  </Tab>
+
+  <Tab title="Suspicious Activity">
+    **Anomaly Detection:**
+
+    🚨 **Spike in disposable emails**
+    - Normal: ~40/day
+    - Today: 234/day (585% increase)
+    - Time: 14:00-16:00 UTC
+    - Action: Review for bot attack
+
+    ⚠️ **Unusual country distribution**
+    - Sudden traffic from Nigeria (+450%)
+    - Block rate: 89%
+    - Recommendation: Add country-specific rules
+
+    📊 **Device fingerprint pattern**
+    - Device #1: 47 signups in 2 hours
+    - All disposable emails
+    - Action: Blocked device
+  </Tab>
+</Tabs>
+
+## API Performance
+
+### Response Times
+
+Track API performance:
+
+```
+Response Time Distribution:
+
+< 100ms:   12,456 (27.1%)  █████████████░░░░░░░░░░░░░░░░░░░░░░░
+100-200ms: 18,234 (39.7%)  ████████████████████░░░░░░░░░░░░░░░░
+200-300ms: 10,892 (23.7%)  ████████████░░░░░░░░░░░░░░░░░░░░░░░░
+300-500ms:  3,456 (7.5%)   ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+> 500ms:      854 (1.9%)   █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+Average: 187ms
+P50: 165ms
+P95: 342ms
+P99: 489ms
+```
+
+### Error Rates
+
+Monitor API errors:
+
+```yaml
+Error Analysis:
+
+Total Requests: 45,892
+Successful: 45,234 (98.6%)
+Failed: 658 (1.4%)
+
+Error Breakdown:
+  - RATE_LIMIT_EXCEEDED: 342 (52%)
+  - INTERNAL_ERROR: 234 (35.6%)
+  - INVALID_EMAIL: 45 (6.8%)
+  - TIMEOUT: 37 (5.6%)
+
+Error Rate by Hour:
+  - Peak: 3.2% at 14:00 UTC
+  - Low: 0.4% at 03:00 UTC
+  - Average: 1.4%
+```
+
+## Usage Analytics
+
+### Quota Tracking
+
+Monitor your monthly quota:
+
+```
+Monthly Usage (January 2024):
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━░░░░░░░░░░░  45,892 / 100,000 (45.9%)
+
+Daily Breakdown:
+Jan 20: 2,456 ████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░
+Jan 19: 2,234 ██████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+Jan 18: 1,892 ███████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+Jan 17: 1,654 █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+Jan 16: 1,456 ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+Projected End of Month: 78,456 (78.5%)
+Overage Risk: Low
+```
+
+### Rate Limit Usage
+
+Track rate limit consumption:
+
+```yaml
+Rate Limits (Hourly):
+
+Client Keys (1,000/hour):
+  Current: 234 / 1,000 (23.4%)
+  Peak today: 892 / 1,000 (89.2%)
+  Rate limit hits: 3 (in last 24h)
+
+Server Keys (5,000/hour):
+  Current: 1,234 / 5,000 (24.7%)
+  Peak today: 3,456 / 5,000 (69.1%)
+  Rate limit hits: 0 (in last 24h)
+```
+
+## Custom Reports
+
+### Creating Reports
+
+Generate custom analytics reports:
+
+<Steps>
+  <Step title="Select Report Type">
+    - Validation Summary
+    - Threat Intelligence
+    - Device Analytics
+    - Geographic Distribution
+    - API Performance
+  </Step>
+
+  <Step title="Configure Parameters">
+    ```yaml
+    Date Range: Last 30 days
+    Grouping: Daily
+    Filters:
+      - Recommendation: Block
+      - Validation Type: Disposable
+      - Country: All
+    Metrics:
+      - Total validations
+      - Block rate
+      - Top domains
+    ```
+  </Step>
+
+  <Step title="Generate Report">
+    Click **Generate Report**
+
+    Processing time: 5-30 seconds
+  </Step>
+
+  <Step title="Export or Schedule">
+    - **Export:** Download as CSV or PDF
+    - **Schedule:** Email weekly/monthly
+  </Step>
+</Steps>
+
+### Scheduled Reports
+
+Automate report generation:
+
+```yaml
+Weekly Fraud Report:
+  Schedule: Every Monday, 9:00 AM
+  Recipients:
+    - security@company.com
+    - cto@company.com
+  Format: PDF
+  Contents:
+    - Validation summary
+    - Threat intelligence
+    - High-risk patterns
+    - Recommendations
+
+Monthly Executive Report:
+  Schedule: 1st of month, 10:00 AM
+  Recipients:
+    - executives@company.com
+  Format: PDF
+  Contents:
+    - Usage statistics
+    - ROI analysis
+    - Trend analysis
+    - Strategic insights
+```
+
+## Filtering & Segmentation
+
+### Advanced Filters
+
+Filter analytics by multiple criteria:
+
+```typescript
+Filters:
+  Date Range: 2024-01-01 to 2024-01-31
+  Environment: Live only
+  Recommendation: Block, Flag
+  Validation Types: Disposable, Role Email
+  Countries: United States, United Kingdom
+  Device Type: Mobile
+  Browser: Chrome, Safari
+```
+
+### Saved Filter Sets
+
+Save commonly used filters:
+
+```yaml
+Filter Set: "High Risk Validations"
+  - Recommendation: Block
+  - Countries: Nigeria, Russia, China
+  - IP Type: VPN, Proxy, Tor
+
+Filter Set: "Mobile Users"
+  - Device Type: Mobile
+  - OS: iOS, Android
+
+Filter Set: "Disposable Emails"
+  - Validation Type: Disposable
+  - Recommendation: Block
+```
+
+## Exporting Data
+
+### Export Formats
+
+<Tabs>
+  <Tab title="CSV">
+    ```csv
+    Date,Email,Recommendation,Country,Device,ValidationsFailed
+    2024-01-20,user***@example.com,allow,US,desktop,none
+    2024-01-20,test***@tempmail.com,block,NG,mobile,disposable
+    2024-01-20,admin***@company.com,flag,GB,desktop,role_email
+    ```
+  </Tab>
+
+  <Tab title="JSON">
+    ```json
+    [
+      {
+        "timestamp": "2024-01-20T14:32:15Z",
+        "email": "user***@example.com",
+        "recommendation": "allow",
+        "country": "US",
+        "device": "desktop",
+        "validations": {
+          "disposable": { "valid": true },
+          "syntax": { "valid": true }
+        }
+      }
+    ]
+    ```
+  </Tab>
+
+  <Tab title="PDF">
+    **Professional report format:**
+    - Executive summary
+    - Charts and graphs
+    - Detailed tables
+    - Recommendations
+    - Branding options
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Monitor Trends" icon="chart-line">
+    Review analytics weekly:
+    - Block rate trends
+    - New fraud patterns
+    - Geographic shifts
+    - Performance issues
+  </Accordion>
+
+  <Accordion title="Set Up Alerts" icon="bell">
+    Configure alerts for:
+    - Block rate > 15%
+    - Quota > 80%
+    - Error rate > 5%
+    - Unusual activity patterns
+  </Accordion>
+
+  <Accordion title="Regular Reports" icon="calendar">
+    Schedule reports for:
+    - Weekly fraud review
+    - Monthly executive summary
+    - Quarterly trend analysis
+  </Accordion>
+
+  <Accordion title="Act on Insights" icon="lightbulb">
+    Use analytics to:
+    - Adjust validation settings
+    - Update allowed domains
+    - Optimize user experience
+    - Prevent fraud patterns
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Projects" icon="folder" href="/dashboard/projects">
+    Managing your projects
+  </Card>
+
+  <Card title="API Keys" icon="key" href="/dashboard/api-keys">
+    Managing API keys
+  </Card>
+
+  <Card title="Validation Types" icon="shield" href="/validation/overview">
+    Understanding validations
+  </Card>
+
+  <Card title="Billing" icon="credit-card" href="/dashboard/billing">
+    Managing billing
+  </Card>
+</CardGroup>

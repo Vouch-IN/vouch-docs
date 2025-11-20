@@ -1,0 +1,884 @@
+---
+title: 'Best Practices'
+description: 'Best practices for integrating Vouch into your application'
+---
+
+## Overview
+
+This guide covers best practices for integrating Vouch email validation into your application, from initial implementation to production deployment and ongoing optimization.
+
+## Architecture & Design
+
+### 1. Hybrid Validation Pattern
+
+Use both client-side and server-side validation for optimal results:
+
+<Tabs>
+  <Tab title="Architecture">
+    ```
+    ┌─────────────┐
+    │   Browser   │
+    │             │
+    │  ┌────────┐ │
+    │  │ Client │ │ ──1. Quick validation──> ┌──────────────┐
+    │  │  Form  │ │                           │ Vouch API    │
+    │  └────┬───┘ │ <─2. Immediate feedback─ │ (Client Key) │
+    │       │     │                           └──────────────┘
+    │       │     │
+    │       └─────┼──3. Submit if passed────> ┌──────────────┐
+    │             │                            │   Backend    │
+    └─────────────┘                            │              │
+                                               │  ┌────────┐  │
+                                               │  │ Server │  │
+                   ┌──────────────┐            │  │  API   │  │
+                   │ Vouch API    │ <──────────┤  └────────┘  │
+                   │ (Server Key) │            │              │
+                   └──────────────┘            └──────────────┘
+                          │
+                          └─4. Authoritative check
+                             5. Create account if valid
+    ```
+  </Tab>
+
+  <Tab title="Implementation">
+    ```typescript
+    // Frontend validation (immediate feedback)
+    const clientVouch = new Vouch(
+      process.env.NEXT_PUBLIC_PROJECT_ID,
+      process.env.NEXT_PUBLIC_CLIENT_KEY
+    );
+
+    async function handleFormSubmit(email: string) {
+      // Step 1: Client validation
+      const clientResult = await clientVouch.validate(email);
+
+      if (clientResult.recommendation === 'block') {
+        showError('Please use a valid email address');
+        return;
+      }
+
+      // Step 2: Submit to backend
+      await fetch('/api/signup', {
+        method: 'POST',
+        body: JSON.stringify({ email })
+      });
+    }
+
+    // Backend validation (authoritative)
+    const serverVouch = new Vouch(
+      process.env.VOUCH_PROJECT_ID,
+      process.env.VOUCH_SERVER_KEY
+    );
+
+    app.post('/api/signup', async (req, res) => {
+      // Step 3: Server validation
+      const result = await serverVouch.validate(req.body.email);
+
+      if (result.recommendation === 'block') {
+        return res.status(400).json({ error: 'Invalid email' });
+      }
+
+      // Step 4: Create account
+      await createUser(req.body.email);
+      res.json({ success: true });
+    });
+    ```
+  </Tab>
+</Tabs>
+
+**Benefits:**
+- Immediate user feedback (client-side)
+- Cannot be bypassed (server-side)
+- Better user experience
+- Maximum security
+
+### 2. Validation Strategy Configuration
+
+Define your validation strategy based on your use case:
+
+```typescript
+interface ValidationStrategy {
+  allowRoleEmails: boolean;
+  allowDisposable: boolean;
+  allowCatchall: boolean;
+  requireSMTP: boolean;
+  checkDeviceFingerprint: boolean;
+  checkIPReputation: boolean;
+}
+
+const strategies: Record<string, ValidationStrategy> = {
+  // High-security (banking, finance)
+  strict: {
+    allowRoleEmails: false,
+    allowDisposable: false,
+    allowCatchall: false,
+    requireSMTP: true,
+    checkDeviceFingerprint: true,
+    checkIPReputation: true
+  },
+
+  // Standard (most apps)
+  balanced: {
+    allowRoleEmails: false,
+    allowDisposable: false,
+    allowCatchall: true,
+    requireSMTP: false,
+    checkDeviceFingerprint: true,
+    checkIPReputation: true
+  },
+
+  // Lenient (newsletters, marketing)
+  permissive: {
+    allowRoleEmails: true,
+    allowDisposable: false,
+    allowCatchall: true,
+    requireSMTP: false,
+    checkDeviceFingerprint: false,
+    checkIPReputation: false
+  }
+};
+```
+
+### 3. Graceful Degradation
+
+Always have a fallback when Vouch is unavailable:
+
+```typescript
+async function validateEmail(email: string) {
+  try {
+    // Try Vouch API
+    return await vouch.validate(email);
+  } catch (error) {
+    // Log error
+    logger.warn('Vouch unavailable, using fallback', { error });
+
+    // Fallback to basic validation
+    return {
+      valid: isBasicEmailValid(email),
+      recommendation: isBasicEmailValid(email) ? 'flag' : 'block',
+      fallback: true,
+      validations: {
+        syntax: {
+          valid: isBasicEmailValid(email),
+          message: 'Basic validation (Vouch unavailable)'
+        }
+      }
+    };
+  }
+}
+
+function isBasicEmailValid(email: string): boolean {
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const hasValidFormat = regex.test(email);
+  const notDisposable = !isKnownDisposable(email);
+
+  return hasValidFormat && notDisposable;
+}
+```
+
+## Implementation Best Practices
+
+### 1. Environment Configuration
+
+Use environment-specific configuration:
+
+```typescript
+// config/vouch.ts
+interface VouchConfig {
+  projectId: string;
+  clientKey: string;
+  serverKey: string;
+  enabled: boolean;
+  timeout: number;
+}
+
+const configs: Record<string, VouchConfig> = {
+  development: {
+    projectId: process.env.VOUCH_TEST_PROJECT_ID!,
+    clientKey: process.env.VOUCH_TEST_CLIENT_KEY!,
+    serverKey: process.env.VOUCH_TEST_SERVER_KEY!,
+    enabled: true,
+    timeout: 5000
+  },
+  staging: {
+    projectId: process.env.VOUCH_TEST_PROJECT_ID!,
+    clientKey: process.env.VOUCH_TEST_CLIENT_KEY!,
+    serverKey: process.env.VOUCH_TEST_SERVER_KEY!,
+    enabled: true,
+    timeout: 3000
+  },
+  production: {
+    projectId: process.env.VOUCH_LIVE_PROJECT_ID!,
+    clientKey: process.env.VOUCH_LIVE_CLIENT_KEY!,
+    serverKey: process.env.VOUCH_LIVE_SERVER_KEY!,
+    enabled: true,
+    timeout: 3000
+  }
+};
+
+export const vouchConfig = configs[process.env.NODE_ENV || 'development'];
+```
+
+### 2. Singleton Pattern
+
+Create a single Vouch instance per environment:
+
+```typescript
+// lib/vouch.ts
+import Vouch from '@vouch/node';
+import { vouchConfig } from '@/config/vouch';
+
+let instance: Vouch | null = null;
+
+export function getVouchInstance(): Vouch {
+  if (!instance) {
+    instance = new Vouch(
+      vouchConfig.projectId,
+      vouchConfig.serverKey,
+      {
+        timeout: vouchConfig.timeout
+      }
+    );
+  }
+  return instance;
+}
+
+// Usage
+import { getVouchInstance } from '@/lib/vouch';
+
+const vouch = getVouchInstance();
+const result = await vouch.validate(email);
+```
+
+### 3. Type-Safe Wrappers
+
+Create type-safe wrapper functions:
+
+```typescript
+interface ValidateOptions {
+  email: string;
+  ip?: string;
+  userAgent?: string;
+  context?: string;
+}
+
+interface ValidateResult {
+  isValid: boolean;
+  recommendation: 'allow' | 'flag' | 'block';
+  score: number;
+  flags: string[];
+  raw: any;
+}
+
+async function validateEmail(options: ValidateOptions): Promise<ValidateResult> {
+  const vouch = getVouchInstance();
+
+  const result = await vouch.validate(options.email, {
+    ip: options.ip,
+    userAgent: options.userAgent
+  });
+
+  return {
+    isValid: result.valid,
+    recommendation: result.recommendation,
+    score: result.score || 0,
+    flags: extractFlags(result),
+    raw: result
+  };
+}
+
+function extractFlags(result: any): string[] {
+  const flags: string[] = [];
+
+  if (result.validations.disposable?.valid === false) {
+    flags.push('disposable');
+  }
+  if (result.validations.catchall?.valid === false) {
+    flags.push('catchall');
+  }
+  if (result.validations.role?.valid === false) {
+    flags.push('role_email');
+  }
+
+  return flags;
+}
+```
+
+## Performance Optimization
+
+### 1. Request Debouncing
+
+Debounce validation requests in forms:
+
+```typescript
+import { debounce } from 'lodash';
+
+const debouncedValidate = debounce(async (email: string) => {
+  // Skip if obviously invalid
+  if (!email.includes('@')) return;
+
+  const result = await vouch.validate(email);
+  updateValidationUI(result);
+}, 500); // Wait 500ms after user stops typing
+
+// Usage in React
+function EmailInput() {
+  const [email, setEmail] = useState('');
+
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setEmail(value);
+    debouncedValidate(value);
+  };
+
+  return <input value={email} onChange={handleChange} />;
+}
+```
+
+### 2. Result Caching
+
+Cache validation results to reduce API calls:
+
+```typescript
+import NodeCache from 'node-cache';
+
+const cache = new NodeCache({
+  stdTTL: 86400, // 24 hours
+  checkperiod: 3600, // Check for expired keys every hour
+  maxKeys: 10000 // Limit cache size
+});
+
+async function validateWithCache(email: string) {
+  // Normalize email
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // Check cache
+  const cached = cache.get<ValidationResult>(normalizedEmail);
+  if (cached) {
+    return { ...cached, cached: true };
+  }
+
+  // Call API
+  const result = await vouch.validate(normalizedEmail);
+
+  // Cache successful results
+  if (result.valid !== undefined) {
+    cache.set(normalizedEmail, result);
+  }
+
+  return { ...result, cached: false };
+}
+```
+
+<Info>
+  Cache validation results for 24 hours maximum. Email deliverability and fraud signals change over time.
+</Info>
+
+### 3. Batch Processing
+
+Process multiple emails efficiently:
+
+```typescript
+async function validateBatch(emails: string[]) {
+  const BATCH_SIZE = 10;
+  const DELAY_MS = 100;
+
+  const results = new Map<string, ValidationResult>();
+
+  // Process in batches
+  for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+    const batch = emails.slice(i, i + BATCH_SIZE);
+
+    // Process batch in parallel
+    const batchResults = await Promise.allSettled(
+      batch.map(email => vouch.validate(email))
+    );
+
+    // Collect results
+    batchResults.forEach((result, index) => {
+      const email = batch[index];
+      if (result.status === 'fulfilled') {
+        results.set(email, result.value);
+      } else {
+        console.error(`Failed to validate ${email}:`, result.reason);
+      }
+    });
+
+    // Delay between batches
+    if (i + BATCH_SIZE < emails.length) {
+      await sleep(DELAY_MS);
+    }
+
+    // Progress tracking
+    console.log(`Processed ${Math.min(i + BATCH_SIZE, emails.length)}/${emails.length}`);
+  }
+
+  return results;
+}
+```
+
+### 4. Conditional Validation
+
+Skip unnecessary API calls:
+
+```typescript
+function shouldValidate(email: string): boolean {
+  // Basic format check
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return false; // Invalid format, no need to call API
+  }
+
+  // Already validated recently
+  if (cache.has(email)) {
+    return false;
+  }
+
+  // Known good domains
+  const trustedDomains = ['company.com', 'partner.com'];
+  const domain = email.split('@')[1];
+  if (trustedDomains.includes(domain)) {
+    return false; // Skip validation for trusted domains
+  }
+
+  return true;
+}
+
+async function smartValidate(email: string) {
+  if (!shouldValidate(email)) {
+    return { valid: true, skipped: true };
+  }
+
+  return await vouch.validate(email);
+}
+```
+
+## Security Best Practices
+
+### 1. API Key Management
+
+<AccordionGroup>
+  <Accordion title="Use Environment Variables" icon="lock">
+    Never hardcode API keys:
+
+    ```bash
+    # .env
+    VOUCH_PROJECT_ID=proj_...
+    VOUCH_CLIENT_KEY=ck_...
+    VOUCH_SERVER_KEY=sk_...
+    ```
+
+    ```typescript
+    // ✅ Good
+    const vouch = new Vouch(
+      process.env.VOUCH_PROJECT_ID,
+      process.env.VOUCH_SERVER_KEY
+    );
+
+    // ❌ Bad
+    const vouch = new Vouch('proj_...', 'sk_...');
+    ```
+  </Accordion>
+
+  <Accordion title="Separate Keys Per Environment" icon="key">
+    Use different keys for test and production:
+
+    ```bash
+    # .env.development
+    VOUCH_PROJECT_ID=proj_test_...
+    VOUCH_SERVER_KEY=sk_test_...
+
+    # .env.production
+    VOUCH_PROJECT_ID=proj_live_...
+    VOUCH_SERVER_KEY=sk_live_...
+    ```
+  </Accordion>
+
+  <Accordion title="Rotate Keys Regularly" icon="rotate">
+    Implement key rotation:
+
+    ```typescript
+    // Support both old and new keys during rotation
+    const PRIMARY_KEY = process.env.VOUCH_PRIMARY_KEY;
+    const FALLBACK_KEY = process.env.VOUCH_FALLBACK_KEY;
+
+    async function validateWithFallback(email: string) {
+      try {
+        const vouch = new Vouch(projectId, PRIMARY_KEY);
+        return await vouch.validate(email);
+      } catch (error) {
+        if (error.code === 'UNAUTHORIZED' && FALLBACK_KEY) {
+          const vouch = new Vouch(projectId, FALLBACK_KEY);
+          return await vouch.validate(email);
+        }
+        throw error;
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Restrict Client Key Domains" icon="shield">
+    Configure allowed domains for client keys:
+
+    ```
+    Development:
+    - localhost:*
+    - *.local
+    - *.ngrok.io
+
+    Production:
+    - yourdomain.com
+    - *.yourdomain.com
+    - app.yourdomain.com
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### 2. Data Privacy
+
+Handle validation data securely:
+
+```typescript
+// Redact email in logs
+function redactEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  return `${local.substring(0, 2)}***@${domain}`;
+}
+
+// Log validation with redacted email
+console.log('Validating email:', redactEmail(email));
+
+// Don't log full validation response
+console.log('Validation result:', {
+  email: redactEmail(email),
+  valid: result.valid,
+  recommendation: result.recommendation
+  // Don't log full result with sensitive data
+});
+```
+
+### 3. Rate Limit Protection
+
+Protect against abuse:
+
+```typescript
+import rateLimit from 'express-rate-limit';
+
+const validationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 requests per window per IP
+  message: 'Too many validation requests. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+app.post('/api/validate', validationLimiter, async (req, res) => {
+  const result = await vouch.validate(req.body.email);
+  res.json(result);
+});
+```
+
+## User Experience
+
+### 1. Inline Validation
+
+Provide immediate feedback:
+
+```tsx
+function EmailInput() {
+  const [email, setEmail] = useState('');
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+
+  const validate = debounce(async (value: string) => {
+    if (!value.includes('@')) return;
+
+    setIsValidating(true);
+    try {
+      const result = await vouch.validate(value);
+      setValidation(result);
+    } finally {
+      setIsValidating(false);
+    }
+  }, 500);
+
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setEmail(value);
+    validate(value);
+  };
+
+  return (
+    <div>
+      <input
+        type="email"
+        value={email}
+        onChange={handleChange}
+        className={validation?.recommendation === 'block' ? 'error' : ''}
+      />
+      {isValidating && <span>Validating...</span>}
+      {validation?.recommendation === 'block' && (
+        <span className="error">Please use a valid email address</span>
+      )}
+      {validation?.recommendation === 'flag' && (
+        <span className="warning">This email may have issues</span>
+      )}
+      {validation?.recommendation === 'allow' && (
+        <span className="success">✓ Email looks good</span>
+      )}
+    </div>
+  );
+}
+```
+
+### 2. Progressive Enhancement
+
+Enhance forms progressively:
+
+```typescript
+// Works without JavaScript
+<form action="/signup" method="POST">
+  <input type="email" name="email" required />
+  <button type="submit">Sign Up</button>
+</form>
+
+// Enhanced with JavaScript
+document.querySelector('form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const email = (e.target as HTMLFormElement).email.value;
+
+  // Client-side validation
+  const result = await vouch.validate(email);
+
+  if (result.recommendation === 'block') {
+    showError('Invalid email');
+    return;
+  }
+
+  // Submit form
+  e.target.submit();
+});
+```
+
+### 3. Clear Error Messages
+
+Provide actionable feedback:
+
+```typescript
+function getErrorMessage(result: ValidationResult): string {
+  if (result.validations.syntax?.valid === false) {
+    return 'Please check your email format';
+  }
+
+  if (result.validations.disposable?.valid === false) {
+    return 'Please use a permanent email address';
+  }
+
+  if (result.validations.mx?.valid === false) {
+    return 'This email domain cannot receive emails';
+  }
+
+  if (result.validations.smtp?.valid === false) {
+    return 'This email address does not exist';
+  }
+
+  return 'Please use a valid email address';
+}
+```
+
+## Monitoring & Observability
+
+### 1. Logging
+
+Log validation events:
+
+```typescript
+import winston from 'winston';
+
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.json(),
+  transports: [
+    new winston.transports.File({ filename: 'vouch-error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'vouch-combined.log' })
+  ]
+});
+
+async function validateWithLogging(email: string) {
+  const startTime = Date.now();
+
+  try {
+    const result = await vouch.validate(email);
+
+    logger.info('Validation successful', {
+      email: redactEmail(email),
+      recommendation: result.recommendation,
+      duration: Date.now() - startTime
+    });
+
+    return result;
+  } catch (error: any) {
+    logger.error('Validation failed', {
+      email: redactEmail(email),
+      error: error.code,
+      duration: Date.now() - startTime
+    });
+
+    throw error;
+  }
+}
+```
+
+### 2. Metrics
+
+Track key metrics:
+
+```typescript
+interface Metrics {
+  totalValidations: number;
+  blocked: number;
+  flagged: number;
+  allowed: number;
+  errors: number;
+  avgDuration: number;
+}
+
+class MetricsCollector {
+  private metrics: Metrics = {
+    totalValidations: 0,
+    blocked: 0,
+    flagged: 0,
+    allowed: 0,
+    errors: 0,
+    avgDuration: 0
+  };
+
+  async validate(email: string) {
+    const startTime = Date.now();
+    this.metrics.totalValidations++;
+
+    try {
+      const result = await vouch.validate(email);
+
+      // Track recommendation
+      this.metrics[result.recommendation]++;
+
+      // Track duration
+      const duration = Date.now() - startTime;
+      this.updateAvgDuration(duration);
+
+      return result;
+    } catch (error) {
+      this.metrics.errors++;
+      throw error;
+    }
+  }
+
+  private updateAvgDuration(duration: number) {
+    const total = this.metrics.avgDuration * (this.metrics.totalValidations - 1);
+    this.metrics.avgDuration = (total + duration) / this.metrics.totalValidations;
+  }
+
+  getMetrics(): Metrics {
+    return { ...this.metrics };
+  }
+}
+```
+
+### 3. Alerts
+
+Set up alerts for issues:
+
+```typescript
+function shouldAlert(metrics: Metrics): boolean {
+  const errorRate = metrics.errors / metrics.totalValidations;
+  const blockRate = metrics.blocked / metrics.totalValidations;
+
+  return (
+    errorRate > 0.05 || // > 5% error rate
+    blockRate > 0.5 ||   // > 50% block rate
+    metrics.avgDuration > 5000 // > 5s avg duration
+  );
+}
+
+setInterval(() => {
+  const metrics = metricsCollector.getMetrics();
+
+  if (shouldAlert(metrics)) {
+    sendAlert({
+      level: 'warning',
+      message: 'Vouch validation anomaly detected',
+      metrics
+    });
+  }
+}, 60000); // Check every minute
+```
+
+## Testing
+
+### 1. Unit Tests
+
+Mock Vouch SDK:
+
+```typescript
+import { vi } from 'vitest';
+
+vi.mock('@vouch/node', () => ({
+  default: vi.fn().mockImplementation(() => ({
+    validate: vi.fn().mockResolvedValue({
+      valid: true,
+      recommendation: 'allow'
+    })
+  }))
+}));
+
+describe('validateEmail', () => {
+  it('validates email successfully', async () => {
+    const result = await validateEmail('user@example.com');
+    expect(result.valid).toBe(true);
+  });
+});
+```
+
+### 2. Integration Tests
+
+Test with real API:
+
+```typescript
+describe('Vouch Integration', () => {
+  const vouch = new Vouch(
+    process.env.VOUCH_TEST_PROJECT_ID!,
+    process.env.VOUCH_TEST_SERVER_KEY!
+  );
+
+  it('blocks disposable email', async () => {
+    const result = await vouch.validate('test@tempmail.com');
+    expect(result.recommendation).toBe('block');
+  });
+
+  it('allows valid email', async () => {
+    const result = await vouch.validate('test@gmail.com');
+    expect(result.recommendation).toBe('allow');
+  });
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing Guide" icon="flask" href="/guides/testing">
+    Testing strategies and examples
+  </Card>
+
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle errors gracefully
+  </Card>
+
+  <Card title="Rate Limits" icon="gauge" href="/guides/rate-limits">
+    Optimize API usage
+  </Card>
+
+  <Card title="Analytics" icon="chart-line" href="/dashboard/analytics">
+    Monitor validation metrics
+  </Card>
+</CardGroup>

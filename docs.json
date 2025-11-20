@@ -3,9 +3,9 @@
   "theme": "mint",
   "name": "Vouch",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#0060ff",
+    "light": "#0060ff",
+    "dark": "#0060ff"
   },
   "favicon": "/favicon.svg",
   "navigation": {
@@ -74,11 +74,7 @@
           {
             "group": "Endpoints",
             "pages": [
-              "api-reference/validate",
-              "api-reference/analytics-devices",
-              "api-reference/analytics-countries",
-              "api-reference/analytics-threats",
-              "api-reference/webhook"
+              "api-reference/validate"
             ]
           }
         ]
@@ -114,11 +110,6 @@
     ],
     "global": {
       "anchors": [
-        {
-          "anchor": "GitHub",
-          "href": "https://github.com/vouch-platform",
-          "icon": "github"
-        },
         {
           "anchor": "Dashboard",
           "href": "https://vouch.expert",

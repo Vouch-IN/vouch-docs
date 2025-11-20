@@ -1,0 +1,593 @@
+---
+title: 'Rate Limits'
+description: 'Understanding and handling Vouch API rate limits'
+---
+
+## Overview
+
+Vouch implements rate limiting to ensure fair usage and system stability. Rate limits vary by key type and are enforced per API key on a rolling window basis.
+
+## Rate Limit Tiers
+
+<CardGroup cols={2}>
+  <Card title="Client Keys" icon="browser" color="#3b82f6">
+    **1,000 requests/hour**
+
+    - Rolling window
+    - Per API key
+    - Resets continuously
+    - Shared across domains
+  </Card>
+
+  <Card title="Server Keys" icon="server" color="#8b5cf6">
+    **5,000 requests/hour**
+
+    - Rolling window
+    - Per API key
+    - Resets continuously
+    - 5x client limit
+  </Card>
+</CardGroup>
+
+## How Rate Limiting Works
+
+### Rolling Window
+
+Vouch uses a **rolling window** rather than a fixed window:
+
+```
+Fixed Window (not used):
+Hour 1: 00:00-01:00 → 1000 requests
+Hour 2: 01:00-02:00 → 1000 requests
+
+Rolling Window (what Vouch uses):
+At 00:30: Can use 1000 requests in last 60 minutes
+At 00:45: Can use 1000 requests in last 60 minutes
+At 01:00: Can use 1000 requests in last 60 minutes
+```
+
+**Benefits:**
+- Prevents burst abuse at window boundaries
+- More fair distribution of requests
+- Smoother rate limit experience
+
+### Rate Limit Headers
+
+Every API response includes rate limit information:
+
+```bash
+HTTP/1.1 200 OK
+X-RateLimit-Limit: 1000          # Total allowed per hour
+X-RateLimit-Remaining: 847        # Requests remaining
+X-RateLimit-Reset: 1640995200     # Unix timestamp when limit resets
+X-RateLimit-Reset-After: 2834     # Seconds until reset
+```
+
+## Handling Rate Limits
+
+### Response When Limited
+
+When you exceed the rate limit, you'll receive:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "Rate limit exceeded. Try again in 2834 seconds.",
+    "status": 429,
+    "retryAfter": 2834
+  }
+}
+```
+
+**HTTP Status:** `429 Too Many Requests`
+
+### Exponential Backoff
+
+Implement exponential backoff when rate limited:
+
+<Tabs>
+  <Tab title="JavaScript">
+    ```javascript
+    async function validateWithRetry(email, maxRetries = 3) {
+      let attempt = 0;
+
+      while (attempt < maxRetries) {
+        try {
+          const result = await vouch.validate(email);
+          return result;
+        } catch (error) {
+          if (error.code === 'RATE_LIMIT_EXCEEDED') {
+            attempt++;
+
+            if (attempt >= maxRetries) {
+              throw error;
+            }
+
+            // Exponential backoff: 1s, 2s, 4s
+            const delay = Math.pow(2, attempt) * 1000;
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            throw error;
+          }
+        }
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="TypeScript">
+    ```typescript
+    interface RetryConfig {
+      maxRetries: number;
+      baseDelay: number;
+      maxDelay: number;
+    }
+
+    async function validateWithRetry(
+      email: string,
+      config: RetryConfig = {
+        maxRetries: 3,
+        baseDelay: 1000,
+        maxDelay: 60000
+      }
+    ): Promise<ValidationResult> {
+      let attempt = 0;
+
+      while (attempt < config.maxRetries) {
+        try {
+          return await vouch.validate(email);
+        } catch (error: any) {
+          if (error.code === 'RATE_LIMIT_EXCEEDED') {
+            attempt++;
+
+            if (attempt >= config.maxRetries) {
+              throw error;
+            }
+
+            const delay = Math.min(
+              Math.pow(2, attempt) * config.baseDelay,
+              config.maxDelay
+            );
+
+            console.log(`Rate limited. Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            throw error;
+          }
+        }
+      }
+
+      throw new Error('Max retries exceeded');
+    }
+    ```
+  </Tab>
+
+  <Tab title="Python">
+    ```python
+    import time
+    import requests
+
+    def validate_with_retry(email, max_retries=3):
+        attempt = 0
+
+        while attempt < max_retries:
+            try:
+                response = requests.post(
+                    'https://api.vouch.expert/validate',
+                    headers={
+                        'Authorization': f'Bearer {api_key}',
+                        'X-Project-Id': project_id
+                    },
+                    json={'email': email}
+                )
+
+                if response.status_code == 429:
+                    attempt += 1
+                    if attempt >= max_retries:
+                        raise Exception('Rate limit exceeded')
+
+                    # Exponential backoff
+                    delay = 2 ** attempt
+                    time.sleep(delay)
+                else:
+                    return response.json()
+
+            except requests.RequestException as e:
+                raise e
+    ```
+  </Tab>
+</Tabs>
+
+### Queue-Based Approach
+
+For high-volume applications, use a queue:
+
+```typescript
+import Queue from 'bull';
+
+// Create queue
+const validationQueue = new Queue('email-validation', {
+  redis: { host: 'localhost', port: 6379 }
+});
+
+// Process queue with rate limiting
+validationQueue.process(async (job) => {
+  const { email } = job.data;
+
+  try {
+    const result = await vouch.validate(email);
+    return result;
+  } catch (error) {
+    if (error.code === 'RATE_LIMIT_EXCEEDED') {
+      // Re-queue with delay
+      throw new Error('Rate limited - will retry');
+    }
+    throw error;
+  }
+});
+
+// Rate limit queue processing
+validationQueue.process({
+  concurrency: 1,
+  limiter: {
+    max: 1000,
+    duration: 3600000 // 1 hour
+  }
+});
+
+// Add job to queue
+validationQueue.add({ email: 'user@example.com' });
+```
+
+## Optimization Strategies
+
+### 1. Client-Side Debouncing
+
+Prevent unnecessary API calls with debouncing:
+
+```typescript
+import { debounce } from 'lodash';
+
+const debouncedValidate = debounce(async (email: string) => {
+  if (!isValidEmailFormat(email)) {
+    return; // Skip API call for obvious invalid emails
+  }
+
+  const result = await vouch.validate(email);
+  updateUI(result);
+}, 500); // Wait 500ms after user stops typing
+
+// Use in form
+input.addEventListener('input', (e) => {
+  debouncedValidate(e.target.value);
+});
+```
+
+### 2. Local Validation First
+
+Perform basic checks before calling API:
+
+```typescript
+function shouldCallAPI(email: string): boolean {
+  // Basic regex check
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return false; // Don't waste API call
+  }
+
+  // Check against known disposable domains
+  const disposableDomains = ['tempmail.com', 'guerrillamail.com'];
+  const domain = email.split('@')[1];
+  if (disposableDomains.includes(domain)) {
+    return false; // Handle client-side
+  }
+
+  return true;
+}
+
+async function smartValidate(email: string) {
+  if (!shouldCallAPI(email)) {
+    return { valid: false, recommendation: 'block' };
+  }
+
+  return await vouch.validate(email);
+}
+```
+
+### 3. Batch Processing
+
+Process multiple emails efficiently:
+
+```typescript
+async function validateBatch(emails: string[]) {
+  const BATCH_SIZE = 10;
+  const DELAY_BETWEEN_BATCHES = 1000; // 1 second
+
+  const results = [];
+
+  for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+    const batch = emails.slice(i, i + BATCH_SIZE);
+
+    const batchResults = await Promise.all(
+      batch.map(email => vouch.validate(email))
+    );
+
+    results.push(...batchResults);
+
+    // Delay between batches to avoid rate limit
+    if (i + BATCH_SIZE < emails.length) {
+      await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+    }
+  }
+
+  return results;
+}
+```
+
+### 4. Caching
+
+Cache validation results to reduce API calls:
+
+```typescript
+import NodeCache from 'node-cache';
+
+const cache = new NodeCache({ stdTTL: 86400 }); // 24 hour TTL
+
+async function validateWithCache(email: string) {
+  // Check cache first
+  const cached = cache.get(email);
+  if (cached) {
+    return cached;
+  }
+
+  // Call API
+  const result = await vouch.validate(email);
+
+  // Cache result
+  cache.set(email, result);
+
+  return result;
+}
+```
+
+<Warning>
+  Only cache validation results for a limited time. Email deliverability and fraud signals change over time.
+</Warning>
+
+## Monitoring Rate Limits
+
+### Track Usage
+
+Monitor your rate limit usage:
+
+```typescript
+class RateLimitMonitor {
+  private usage: Map<string, number> = new Map();
+
+  async validate(email: string) {
+    const result = await vouch.validate(email);
+
+    // Extract rate limit info from headers
+    const remaining = parseInt(
+      result.headers['x-ratelimit-remaining']
+    );
+
+    // Log usage
+    console.log(`Rate limit remaining: ${remaining}/1000`);
+
+    // Alert if running low
+    if (remaining < 100) {
+      this.sendAlert('Rate limit running low');
+    }
+
+    return result;
+  }
+
+  sendAlert(message: string) {
+    // Send to monitoring service
+    console.error(`⚠️  ${message}`);
+  }
+}
+```
+
+### Dashboard Monitoring
+
+Track usage in your Vouch dashboard:
+
+1. Go to [vouch.expert/dashboard](https://vouch.expert/dashboard)
+2. Select your project
+3. Navigate to **Analytics** → **Usage**
+4. View:
+   - Hourly request volume
+   - Rate limit hits
+   - Key-level usage
+   - Historical trends
+
+## Increasing Rate Limits
+
+### Upgrade Plan
+
+Higher rate limits are available on paid plans:
+
+| Plan | Client Key | Server Key |
+|------|------------|------------|
+| **Free** | 1,000/hour | 5,000/hour |
+| **Starter** | 2,500/hour | 10,000/hour |
+| **Pro** | 10,000/hour | 50,000/hour |
+| **Enterprise** | Custom | Custom |
+
+### Multiple API Keys
+
+Create multiple projects for different use cases:
+
+```typescript
+// Different keys for different services
+const mainAppVouch = new Vouch(mainProjectId, mainKey);
+const batchVouch = new Vouch(batchProjectId, batchKey);
+const webhookVouch = new Vouch(webhookProjectId, webhookKey);
+
+// Use appropriate key based on context
+async function validate(email: string, context: string) {
+  switch (context) {
+    case 'main':
+      return mainAppVouch.validate(email);
+    case 'batch':
+      return batchVouch.validate(email);
+    case 'webhook':
+      return webhookVouch.validate(email);
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Respect Rate Limit Headers" icon="gauge">
+    Always check rate limit headers before making requests:
+
+    ```typescript
+    const remaining = parseInt(headers['x-ratelimit-remaining']);
+    const resetAfter = parseInt(headers['x-ratelimit-reset-after']);
+
+    if (remaining < 10) {
+      console.warn(`Only ${remaining} requests remaining`);
+      console.warn(`Resets in ${resetAfter} seconds`);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Implement Graceful Degradation" icon="shield">
+    Have a fallback when rate limited:
+
+    ```typescript
+    try {
+      return await vouch.validate(email);
+    } catch (error) {
+      if (error.code === 'RATE_LIMIT_EXCEEDED') {
+        // Fallback to basic validation
+        return basicValidation(email);
+      }
+      throw error;
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use Appropriate Key Type" icon="key">
+    - Client keys for browser: 1,000/hour
+    - Server keys for backend: 5,000/hour
+    - Use server keys for high-volume operations
+  </Accordion>
+
+  <Accordion title="Distribute Load" icon="clock">
+    Spread requests over time rather than bursts:
+
+    ```typescript
+    // Bad: All at once
+    const results = await Promise.all(
+      emails.map(e => vouch.validate(e))
+    );
+
+    // Good: Distributed
+    const results = [];
+    for (const email of emails) {
+      results.push(await vouch.validate(email));
+      await sleep(100); // 100ms between requests
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor and Alert" icon="bell">
+    Set up monitoring for rate limit usage:
+
+    ```typescript
+    if (remaining < threshold) {
+      sendAlert({
+        level: 'warning',
+        message: `Rate limit at ${remaining}/${limit}`,
+        resetIn: resetAfter
+      });
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Scenarios
+
+### High-Volume Signup Form
+
+```typescript
+// Queue system for high-volume signups
+const signupQueue = new Queue('signups');
+
+signupQueue.process(async (job) => {
+  const { email } = job.data;
+
+  try {
+    return await vouch.validate(email);
+  } catch (error) {
+    if (error.code === 'RATE_LIMIT_EXCEEDED') {
+      // Retry job later
+      throw error;
+    }
+  }
+});
+
+// Rate limit queue processing
+signupQueue.process({
+  limiter: { max: 900, duration: 3600000 } // 900/hour (buffer)
+});
+```
+
+### Batch Import
+
+```typescript
+async function importUsers(users: User[]) {
+  const REQUESTS_PER_HOUR = 900; // Buffer below limit
+  const DELAY = 3600000 / REQUESTS_PER_HOUR; // ~4 seconds
+
+  for (const user of users) {
+    await vouch.validate(user.email);
+    await sleep(DELAY);
+
+    console.log(`Processed ${users.indexOf(user) + 1}/${users.length}`);
+  }
+}
+```
+
+### Real-Time Validation
+
+```typescript
+// Debounced real-time validation
+const validate = debounce(async (email: string) => {
+  try {
+    const result = await vouch.validate(email);
+    showValidationResult(result);
+  } catch (error) {
+    if (error.code === 'RATE_LIMIT_EXCEEDED') {
+      showWarning('Validation temporarily unavailable');
+    }
+  }
+}, 300);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle rate limit errors gracefully
+  </Card>
+
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Optimization strategies
+  </Card>
+
+  <Card title="Analytics" icon="chart-line" href="/dashboard/analytics">
+    Monitor your usage
+  </Card>
+
+  <Card title="Billing" icon="credit-card" href="/dashboard/billing">
+    Upgrade your plan
+  </Card>
+</CardGroup>

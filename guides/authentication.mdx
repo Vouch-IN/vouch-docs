@@ -1,0 +1,448 @@
+---
+title: 'Authentication Guide'
+description: 'Best practices and patterns for authenticating with Vouch'
+---
+
+## Overview
+
+Authentication with Vouch is built around **API keys** and **project IDs**. This guide covers authentication best practices, security patterns, and common integration scenarios.
+
+## Quick Reference
+
+Every Vouch API request requires two authentication headers:
+
+```bash
+Authorization: Bearer your_api_key
+X-Project-Id: your_project_id
+```
+
+<Info>
+  Never commit API keys to version control. Always use environment variables.
+</Info>
+
+## Key Types
+
+Vouch provides two distinct key types, each optimized for different environments:
+
+<CardGroup cols={2}>
+  <Card title="Client Keys" icon="browser">
+    **Use in browsers and mobile apps**
+
+    - Domain-restricted for security
+    - 1,000 requests/hour
+    - Safe to expose in client code
+    - Cannot override IP/User-Agent
+    - Automatic device fingerprinting
+  </Card>
+
+  <Card title="Server Keys" icon="server">
+    **Use in backend services**
+
+    - No domain restrictions
+    - 5,000 requests/hour
+    - Must remain secret
+    - Can override IP/User-Agent
+    - Blocked from browsers
+  </Card>
+</CardGroup>
+
+## Environment Setup
+
+### Development Environment
+
+Use test keys during development to avoid consuming your quota:
+
+```bash
+# .env.development
+VOUCH_PROJECT_ID=proj_test_1234567890
+VOUCH_CLIENT_KEY=ck_test_1234567890abcdef
+VOUCH_SERVER_KEY=sk_test_1234567890abcdef
+```
+
+### Production Environment
+
+Use live keys for production traffic:
+
+```bash
+# .env.production
+VOUCH_PROJECT_ID=proj_live_1234567890
+VOUCH_CLIENT_KEY=ck_live_1234567890abcdef
+VOUCH_SERVER_KEY=sk_live_1234567890abcdef
+```
+
+<Warning>
+  Test and live environments are completely isolated. Data and quotas are tracked separately.
+</Warning>
+
+## Implementation Patterns
+
+### Pattern 1: Client-Side Validation
+
+Use client keys when validating in the browser:
+
+<Tabs>
+  <Tab title="React">
+    ```tsx
+    import { useVouch } from '@vouch/react';
+
+    function SignupForm() {
+      const vouch = useVouch(
+        process.env.NEXT_PUBLIC_VOUCH_PROJECT_ID,
+        process.env.NEXT_PUBLIC_VOUCH_CLIENT_KEY
+      );
+
+      const handleSubmit = async (email: string) => {
+        const result = await vouch.validate(email);
+
+        if (result.recommendation === 'block') {
+          setError('Please use a valid email address');
+          return;
+        }
+
+        // Proceed with signup
+      };
+    }
+    ```
+  </Tab>
+
+  <Tab title="JavaScript">
+    ```javascript
+    import Vouch from '@vouch/js';
+
+    const vouch = new Vouch(
+      process.env.VOUCH_PROJECT_ID,
+      process.env.VOUCH_CLIENT_KEY
+    );
+
+    async function validateEmail(email) {
+      const result = await vouch.validate(email);
+      return result;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Pattern 2: Server-Side Validation
+
+Use server keys when validating on the backend:
+
+<Tabs>
+  <Tab title="Node.js">
+    ```javascript
+    import Vouch from '@vouch/node';
+
+    const vouch = new Vouch(
+      process.env.VOUCH_PROJECT_ID,
+      process.env.VOUCH_SERVER_KEY
+    );
+
+    app.post('/api/signup', async (req, res) => {
+      const { email } = req.body;
+
+      const result = await vouch.validate(email);
+
+      if (result.recommendation === 'block') {
+        return res.status(400).json({
+          error: 'Invalid email address'
+        });
+      }
+
+      // Create user account
+    });
+    ```
+  </Tab>
+
+  <Tab title="Next.js API Route">
+    ```typescript
+    import { NextRequest, NextResponse } from 'next/server';
+    import Vouch from '@vouch/node';
+
+    const vouch = new Vouch(
+      process.env.VOUCH_PROJECT_ID!,
+      process.env.VOUCH_SERVER_KEY!
+    );
+
+    export async function POST(req: NextRequest) {
+      const { email } = await req.json();
+
+      const result = await vouch.validate(email);
+
+      if (result.recommendation === 'block') {
+        return NextResponse.json(
+          { error: 'Invalid email' },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json({ success: true });
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Pattern 3: Hybrid Validation
+
+Validate on both client and server for maximum security:
+
+```typescript
+// Client-side (immediate feedback)
+const clientResult = await clientVouch.validate(email);
+
+if (clientResult.recommendation === 'block') {
+  showError('Invalid email');
+  return;
+}
+
+// Server-side (authoritative check)
+const response = await fetch('/api/signup', {
+  method: 'POST',
+  body: JSON.stringify({ email })
+});
+```
+
+<Info>
+  Hybrid validation provides the best user experience while maintaining security. The client check gives immediate feedback, and the server check ensures validation can't be bypassed.
+</Info>
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Environment-Specific Keys" icon="key">
+    Configure different keys for each environment:
+
+    ```javascript
+    const getVouchConfig = () => {
+      switch (process.env.NODE_ENV) {
+        case 'production':
+          return {
+            projectId: process.env.VOUCH_LIVE_PROJECT_ID,
+            apiKey: process.env.VOUCH_LIVE_KEY
+          };
+        case 'staging':
+          return {
+            projectId: process.env.VOUCH_STAGING_PROJECT_ID,
+            apiKey: process.env.VOUCH_STAGING_KEY
+          };
+        default:
+          return {
+            projectId: process.env.VOUCH_TEST_PROJECT_ID,
+            apiKey: process.env.VOUCH_TEST_KEY
+          };
+      }
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Rotate Keys Regularly" icon="rotate">
+    Implement key rotation for enhanced security:
+
+    ```javascript
+    // Support both old and new keys during rotation
+    const PRIMARY_KEY = process.env.VOUCH_PRIMARY_KEY;
+    const FALLBACK_KEY = process.env.VOUCH_FALLBACK_KEY;
+
+    async function validateWithFallback(email) {
+      try {
+        const vouch = new Vouch(projectId, PRIMARY_KEY);
+        return await vouch.validate(email);
+      } catch (error) {
+        if (error.code === 'UNAUTHORIZED') {
+          const vouch = new Vouch(projectId, FALLBACK_KEY);
+          return await vouch.validate(email);
+        }
+        throw error;
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Secure Storage" icon="lock">
+    Store keys securely based on your deployment platform:
+
+    **Vercel:**
+    ```bash
+    vercel env add VOUCH_SERVER_KEY
+    ```
+
+    **AWS Lambda:**
+    ```bash
+    aws ssm put-parameter \
+      --name /vouch/server-key \
+      --value "sk_live_..." \
+      --type SecureString
+    ```
+
+    **Docker:**
+    ```bash
+    docker run -e VOUCH_SERVER_KEY=sk_live_... myapp
+    ```
+  </Accordion>
+
+  <Accordion title="Domain Restrictions" icon="shield">
+    Configure allowed domains for client keys:
+
+    1. Go to Dashboard → Project Settings → API Keys
+    2. Click on your client key
+    3. Add allowed domains:
+       - `localhost:*` (development)
+       - `*.yourdomain.com` (production)
+       - `yourdomain.com` (production root)
+
+    ```javascript
+    // These will work
+    // From: https://app.yourdomain.com
+    // From: https://yourdomain.com
+    // From: http://localhost:3000
+
+    // These will be blocked
+    // From: https://unauthorized.com
+    // From: https://evil.com
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling
+
+### Authentication Errors
+
+Handle authentication errors gracefully:
+
+```typescript
+try {
+  const result = await vouch.validate(email);
+} catch (error) {
+  if (error.code === 'UNAUTHORIZED') {
+    // Invalid API key
+    console.error('Invalid API key - check your credentials');
+  } else if (error.code === 'MISSING_PROJECT_ID') {
+    // Missing project ID header
+    console.error('Project ID not configured');
+  } else if (error.code === 'INVALID_KEY_TYPE') {
+    // Server key used in browser
+    console.error('Wrong key type for this environment');
+  } else if (error.code === 'DOMAIN_NOT_ALLOWED') {
+    // Client key used from unauthorized domain
+    console.error('Domain not in allowed list');
+  }
+}
+```
+
+### Common Error Codes
+
+| Error Code | Cause | Solution |
+|------------|-------|----------|
+| `UNAUTHORIZED` | Invalid API key | Check key value and environment |
+| `MISSING_PROJECT_ID` | Project ID not provided | Add X-Project-Id header |
+| `INVALID_KEY_TYPE` | Server key in browser | Use client key instead |
+| `DOMAIN_NOT_ALLOWED` | Origin not allowed | Add domain to allowed list |
+
+## Testing Authentication
+
+### Unit Tests
+
+Mock Vouch SDK for testing:
+
+```typescript
+import { vi } from 'vitest';
+
+vi.mock('@vouch/node', () => ({
+  default: vi.fn().mockImplementation(() => ({
+    validate: vi.fn().mockResolvedValue({
+      valid: true,
+      recommendation: 'allow'
+    })
+  }))
+}));
+
+describe('signup', () => {
+  it('validates email before creating account', async () => {
+    const result = await signup('user@example.com');
+    expect(result.success).toBe(true);
+  });
+});
+```
+
+### Integration Tests
+
+Test with real API in non-production environments:
+
+```typescript
+describe('Vouch Integration', () => {
+  const vouch = new Vouch(
+    process.env.VOUCH_TEST_PROJECT_ID,
+    process.env.VOUCH_TEST_SERVER_KEY
+  );
+
+  it('validates valid email', async () => {
+    const result = await vouch.validate('test@example.com');
+    expect(result.valid).toBe(true);
+  });
+
+  it('blocks disposable email', async () => {
+    const result = await vouch.validate('test@tempmail.com');
+    expect(result.recommendation).toBe('block');
+  });
+});
+```
+
+## Monitoring & Debugging
+
+### Request Logging
+
+Log authentication details for debugging:
+
+```typescript
+const vouch = new Vouch(projectId, apiKey, {
+  onRequest: (config) => {
+    console.log('Vouch Request:', {
+      url: config.url,
+      headers: config.headers,
+      timestamp: new Date().toISOString()
+    });
+  },
+  onResponse: (response) => {
+    console.log('Vouch Response:', {
+      status: response.status,
+      duration: response.duration
+    });
+  }
+});
+```
+
+### Health Checks
+
+Verify authentication in health checks:
+
+```typescript
+app.get('/health', async (req, res) => {
+  try {
+    // Simple API test
+    const vouch = new Vouch(projectId, apiKey);
+    await vouch.validate('health@check.com');
+
+    res.json({ status: 'ok', vouch: 'connected' });
+  } catch (error) {
+    res.status(503).json({ status: 'error', vouch: 'disconnected' });
+  }
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client vs Server" icon="code-compare" href="/guides/client-vs-server">
+    Understand when to use each key type
+  </Card>
+
+  <Card title="Rate Limits" icon="gauge" href="/guides/rate-limits">
+    Learn about rate limiting
+  </Card>
+
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle errors gracefully
+  </Card>
+
+  <Card title="API Keys Dashboard" icon="key" href="/dashboard/api-keys">
+    Manage your API keys
+  </Card>
+</CardGroup>

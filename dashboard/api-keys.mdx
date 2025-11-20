@@ -1,0 +1,683 @@
+---
+title: 'API Key Management'
+description: 'Managing API keys in the Vouch dashboard'
+---
+
+## Overview
+
+API keys are the credentials your application uses to authenticate with the Vouch API. Each project has four API keys: client and server keys for both test and live environments.
+
+## Key Types
+
+<CardGroup cols={2}>
+  <Card title="Client Keys" icon="browser" color="#3b82f6">
+    **Prefix:** `ck_test_` or `ck_live_`
+
+    **Use in:** Browsers and mobile apps
+
+    - Domain-restricted for security
+    - 1,000 requests/hour
+    - Safe to expose in client code
+    - Automatic device fingerprinting
+    - Cannot override IP/User-Agent
+  </Card>
+
+  <Card title="Server Keys" icon="server" color="#8b5cf6">
+    **Prefix:** `sk_test_` or `sk_live_`
+
+    **Use in:** Backend services
+
+    - No domain restrictions
+    - 5,000 requests/hour
+    - Must remain secret
+    - Can override IP/User-Agent
+    - Blocked in browsers
+  </Card>
+</CardGroup>
+
+## API Key Structure
+
+Each project has four API keys:
+
+| Environment | Key Type | Prefix | Use Case |
+|-------------|----------|--------|----------|
+| **Test** | Client | `ck_test_` | Development in browsers |
+| **Test** | Server | `sk_test_` | Development on servers |
+| **Live** | Client | `ck_live_` | Production in browsers |
+| **Live** | Server | `sk_live_` | Production on servers |
+
+<Info>
+  Test keys don't count against your monthly quota. Use them freely during development.
+</Info>
+
+## Viewing API Keys
+
+### Dashboard Access
+
+1. Navigate to [vouch.expert/dashboard](https://vouch.expert/dashboard)
+2. Select your project
+3. Go to **Settings** → **API Keys**
+
+### Key Information
+
+For each API key, you can view:
+
+```yaml
+Key Name: Live Server Key
+Key ID: key_live_1234567890
+Prefix: sk_live_
+Environment: Live
+Type: Server
+Created: 2024-01-15 10:30:42
+Last Used: 2024-01-20 14:25:11
+Usage (30d): 45,892 requests
+Status: Active
+```
+
+### Revealing Keys
+
+By default, keys are hidden:
+
+```
+Live Server Key: sk_live_••••••••••••••••••••
+```
+
+<Warning>
+  Only reveal keys in secure environments. Never share screenshots containing API keys.
+</Warning>
+
+## Creating API Keys
+
+### Default Keys
+
+When you create a project, four API keys are automatically generated:
+
+- Test Client Key
+- Test Server Key
+- Live Client Key
+- Live Server Key
+
+### Additional Keys (Enterprise)
+
+Enterprise plans can create additional API keys:
+
+<Steps>
+  <Step title="Navigate to API Keys">
+    Go to Project Settings → API Keys
+  </Step>
+
+  <Step title="Click 'Create New Key'">
+    Choose key type and environment
+  </Step>
+
+  <Step title="Configure Key">
+    ```yaml
+    Key Name: Mobile App Key
+    Type: Client
+    Environment: Live
+    Domains: app.yourdomain.com, *.yourdomain.com
+    Rate Limit: 5,000/hour
+    ```
+  </Step>
+
+  <Step title="Save and Copy">
+    Copy the key immediately - it won't be shown again
+  </Step>
+</Steps>
+
+## Regenerating Keys
+
+If a key is compromised, regenerate it immediately:
+
+<Steps>
+  <Step title="Navigate to API Keys">
+    Go to Project Settings → API Keys
+  </Step>
+
+  <Step title="Select Key">
+    Find the compromised key
+  </Step>
+
+  <Step title="Click 'Regenerate'">
+    Confirm you want to regenerate
+  </Step>
+
+  <Step title="Update Application">
+    Copy new key and update your application
+  </Step>
+</Steps>
+
+<Warning>
+  The old key stops working immediately after regeneration. Update your application before regenerating production keys.
+</Warning>
+
+### Regeneration Best Practices
+
+<AccordionGroup>
+  <Accordion title="Zero-Downtime Rotation" icon="rotate">
+    Use fallback keys during rotation:
+
+    ```typescript
+    // Step 1: Add new key as fallback
+    const PRIMARY_KEY = process.env.VOUCH_SERVER_KEY;
+    const FALLBACK_KEY = process.env.VOUCH_SERVER_KEY_NEW;
+
+    async function validate(email: string) {
+      try {
+        const vouch = new Vouch(projectId, PRIMARY_KEY);
+        return await vouch.validate(email);
+      } catch (error) {
+        if (error.code === 'UNAUTHORIZED' && FALLBACK_KEY) {
+          const vouch = new Vouch(projectId, FALLBACK_KEY);
+          return await vouch.validate(email);
+        }
+        throw error;
+      }
+    }
+
+    // Step 2: Deploy with fallback
+    // Step 3: Regenerate old key
+    // Step 4: Swap primary and fallback
+    // Step 5: Deploy again
+    // Step 6: Remove fallback
+    ```
+  </Accordion>
+
+  <Accordion title="Scheduled Rotation" icon="calendar">
+    Rotate keys on a schedule:
+
+    ```yaml
+    Rotation Schedule:
+    - Every 90 days for production keys
+    - Every 180 days for test keys
+    - Immediate rotation if compromised
+
+    Process:
+    1. Week before: Prepare new keys
+    2. Day of: Deploy with fallback support
+    3. Day after: Verify everything works
+    4. Week after: Remove fallback code
+    ```
+  </Accordion>
+
+  <Accordion title="Emergency Rotation" icon="circle-exclamation">
+    If a key is compromised:
+
+    ```yaml
+    Immediate Actions:
+    1. Regenerate key immediately in dashboard
+    2. Update all applications ASAP
+    3. Monitor for unauthorized usage
+    4. Review audit logs
+    5. Check for data breaches
+
+    Post-Incident:
+    1. Review how key was compromised
+    2. Update security procedures
+    3. Train team on key security
+    4. Consider automated rotation
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Configuring Client Keys
+
+### Allowed Domains
+
+Client keys require domain configuration:
+
+<Tabs>
+  <Tab title="Development">
+    ```
+    localhost:3000
+    localhost:8080
+    localhost:*
+    *.local
+    *.ngrok.io
+    *.vercel.app
+    *.netlify.app
+    ```
+
+    **Wildcard Usage:**
+    - `localhost:*` → Any localhost port
+    - `*.ngrok.io` → All ngrok tunnels
+    - `*.vercel.app` → All Vercel previews
+  </Tab>
+
+  <Tab title="Staging">
+    ```
+    staging.yourdomain.com
+    *.staging.yourdomain.com
+    preview.yourdomain.com
+    *.preview.yourdomain.com
+    ```
+
+    **Best Practices:**
+    - Use specific subdomains
+    - Avoid overly broad wildcards
+    - Include CDN domains if needed
+  </Tab>
+
+  <Tab title="Production">
+    ```
+    yourdomain.com
+    www.yourdomain.com
+    app.yourdomain.com
+    *.yourdomain.com
+    ```
+
+    **Best Practices:**
+    - List specific production domains
+    - Include www and root domain
+    - Add subdomain wildcard if needed
+    - Don't include `*` alone
+  </Tab>
+</Tabs>
+
+### Domain Validation
+
+Test your domain configuration:
+
+1. Go to API Keys → Client Key → Domains
+2. Click **Test Domain**
+3. Enter domain: `https://app.yourdomain.com`
+4. See if it's allowed or blocked
+
+**Common Issues:**
+
+```
+❌ app.yourdomain.com
+   Allowed: yourdomain.com, *.yourdomain.com
+   Result: ✓ Allowed (matches wildcard)
+
+❌ yourdomain.com
+   Allowed: *.yourdomain.com
+   Result: ✗ Blocked (wildcard doesn't match root)
+   Fix: Add yourdomain.com explicitly
+
+❌ evil.com
+   Allowed: yourdomain.com
+   Result: ✗ Blocked
+   Error: DOMAIN_NOT_ALLOWED
+```
+
+## Key Security
+
+### Storage Best Practices
+
+<AccordionGroup>
+  <Accordion title="Environment Variables" icon="terminal">
+    Store keys in environment variables:
+
+    ```bash
+    # .env (never commit)
+    VOUCH_PROJECT_ID=proj_live_1234567890
+    VOUCH_CLIENT_KEY=ck_live_1234567890abcdef
+    VOUCH_SERVER_KEY=sk_live_1234567890abcdef
+
+    # .env.example (commit this)
+    VOUCH_PROJECT_ID=your_project_id
+    VOUCH_CLIENT_KEY=your_client_key
+    VOUCH_SERVER_KEY=your_server_key
+    ```
+
+    ```bash
+    # .gitignore
+    .env
+    .env.local
+    .env.*.local
+    ```
+  </Accordion>
+
+  <Accordion title="Secrets Managers" icon="vault">
+    Use secrets managers for production:
+
+    **AWS Secrets Manager:**
+    ```bash
+    aws secretsmanager create-secret \
+      --name vouch/server-key \
+      --secret-string "sk_live_1234567890abcdef"
+    ```
+
+    **HashiCorp Vault:**
+    ```bash
+    vault kv put secret/vouch \
+      server_key="sk_live_1234567890abcdef" \
+      project_id="proj_live_1234567890"
+    ```
+
+    **Kubernetes Secrets:**
+    ```bash
+    kubectl create secret generic vouch-keys \
+      --from-literal=server-key=sk_live_1234567890abcdef \
+      --from-literal=project-id=proj_live_1234567890
+    ```
+  </Accordion>
+
+  <Accordion title="CI/CD Secrets" icon="code-branch">
+    Configure secrets in your CI/CD:
+
+    **GitHub Actions:**
+    ```yaml
+    # Settings → Secrets → Actions
+    VOUCH_PROJECT_ID: proj_live_***
+    VOUCH_SERVER_KEY: sk_live_***
+    ```
+
+    **GitLab CI:**
+    ```yaml
+    # Settings → CI/CD → Variables
+    VOUCH_PROJECT_ID: proj_live_***
+    VOUCH_SERVER_KEY: sk_live_***
+    ```
+
+    **CircleCI:**
+    ```yaml
+    # Project Settings → Environment Variables
+    VOUCH_PROJECT_ID: proj_live_***
+    VOUCH_SERVER_KEY: sk_live_***
+    ```
+  </Accordion>
+
+  <Accordion title="Client-Side Keys" icon="browser">
+    Client keys can be exposed but require domain restrictions:
+
+    ```typescript
+    // OK for client keys
+    const vouch = new Vouch(
+      process.env.NEXT_PUBLIC_VOUCH_PROJECT_ID,
+      process.env.NEXT_PUBLIC_VOUCH_CLIENT_KEY
+    );
+
+    // NEVER for server keys
+    const vouch = new Vouch(
+      process.env.VOUCH_PROJECT_ID,
+      process.env.VOUCH_SERVER_KEY // ❌ Don't expose server keys
+    );
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Key Compromise Checklist
+
+If you accidentally expose a key:
+
+<Steps>
+  <Step title="Regenerate Immediately">
+    Go to dashboard and regenerate the exposed key
+  </Step>
+
+  <Step title="Update Applications">
+    Deploy new key to all applications
+  </Step>
+
+  <Step title="Monitor Usage">
+    Check audit logs for unauthorized usage
+  </Step>
+
+  <Step title="Review Exposure">
+    ```
+    Where was it exposed?
+    - Public repository?
+    - Screenshot?
+    - Shared code?
+    - Chat logs?
+
+    How long exposed?
+    - Minutes? Hours? Days?
+
+    Was it accessed?
+    - Check audit logs
+    - Review usage patterns
+    ```
+  </Step>
+
+  <Step title="Prevent Recurrence">
+    - Add keys to .gitignore
+    - Set up git hooks to prevent commits
+    - Use secret scanning tools
+    - Train team on security
+  </Step>
+</Steps>
+
+## Key Monitoring
+
+### Usage Tracking
+
+Monitor key usage in real-time:
+
+```yaml
+Live Server Key (sk_live_***):
+  Last 24 Hours: 5,247 requests
+  Success Rate: 98.2%
+  Error Rate: 1.8%
+  Avg Response Time: 234ms
+  Top Errors:
+    - RATE_LIMIT_EXCEEDED: 42
+    - INVALID_EMAIL: 33
+    - INTERNAL_ERROR: 8
+
+Live Client Key (ck_live_***):
+  Last 24 Hours: 2,891 requests
+  Success Rate: 99.1%
+  Error Rate: 0.9%
+  Avg Response Time: 189ms
+  Top Countries:
+    - United States: 62%
+    - United Kingdom: 18%
+    - Canada: 12%
+```
+
+### Alerts
+
+Set up alerts for key-specific issues:
+
+<AccordionGroup>
+  <Accordion title="Unusual Activity" icon="bell">
+    Alert when:
+    - Request volume 10x normal
+    - New country/IP accessing key
+    - High error rate (>5%)
+    - Approaching rate limit
+
+    ```yaml
+    Alert: Unusual Activity Detected
+    Key: Live Server Key
+    Issue: Request volume 15x normal
+    Requests: 75,000 in last hour (normal: 5,000)
+    Action: Review audit logs and consider temporary suspension
+    ```
+  </Accordion>
+
+  <Accordion title="Rate Limiting" icon="gauge">
+    Alert when approaching rate limits:
+
+    ```yaml
+    Alert: Rate Limit Warning
+    Key: Live Client Key
+    Current: 850/1,000 requests (85%)
+    Reset In: 12 minutes
+    Action: Consider upgrading plan or optimizing usage
+    ```
+  </Accordion>
+
+  <Accordion title="Security Events" icon="shield">
+    Alert on security issues:
+
+    ```yaml
+    Alert: Security Event
+    Key: Live Server Key
+    Issue: Key used from browser (blocked)
+    Attempts: 247 in last hour
+    Action: Check if server key exposed in client code
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Audit Logs
+
+Track all key-related events:
+
+```
+2024-01-20 14:32:15 - john@company.com viewed Live Server Key
+2024-01-20 10:15:43 - sarah@company.com regenerated Test Client Key
+2024-01-19 16:45:22 - mike@company.com updated allowed domains
+2024-01-19 09:12:11 - admin@company.com created new API key
+2024-01-18 11:23:45 - john@company.com copied Live Server Key
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Never Commit Keys" icon="github">
+    ```bash
+    # ❌ Bad - committed to git
+    const apiKey = 'sk_live_1234567890abcdef';
+
+    # ✅ Good - use environment variables
+    const apiKey = process.env.VOUCH_SERVER_KEY;
+    ```
+
+    Set up pre-commit hooks:
+
+    ```bash
+    #!/bin/sh
+    # .git/hooks/pre-commit
+
+    if git diff --cached | grep -E '(sk_live_|sk_test_|ck_live_|ck_test_)'; then
+      echo "Error: Vouch API key detected in commit"
+      exit 1
+    fi
+    ```
+  </Accordion>
+
+  <Accordion title="Use Test Keys in Development" icon="flask">
+    ```typescript
+    const apiKey = process.env.NODE_ENV === 'production'
+      ? process.env.VOUCH_LIVE_KEY
+      : process.env.VOUCH_TEST_KEY;
+    ```
+
+    Benefits:
+    - Free unlimited testing
+    - No production quota impact
+    - Safe to experiment
+    - Isolated from production data
+  </Accordion>
+
+  <Accordion title="Rotate Keys Regularly" icon="rotate">
+    ```yaml
+    Rotation Schedule:
+    - Production keys: Every 90 days
+    - Test keys: Every 180 days
+    - After team member departure: Immediate
+    - After security incident: Immediate
+    ```
+  </Accordion>
+
+  <Accordion title="Limit Key Access" icon="lock">
+    Control who can access keys:
+
+    - **Owner:** Full access
+    - **Admin:** Can view, cannot regenerate
+    - **Developer:** Can view test keys only
+    - **Viewer:** Cannot view any keys
+  </Accordion>
+
+  <Accordion title="Monitor Key Usage" icon="chart-line">
+    Regularly review:
+
+    - Request patterns
+    - Error rates
+    - Geographic distribution
+    - Unusual activity
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="UNAUTHORIZED Error" icon="key">
+    **Error:** `Invalid API key`
+
+    **Causes:**
+    - Wrong key value
+    - Key regenerated
+    - Key from different project
+    - Typo in key
+
+    **Solutions:**
+    ```typescript
+    // 1. Verify key value
+    console.log('Key:', process.env.VOUCH_SERVER_KEY?.substring(0, 10));
+
+    // 2. Check environment
+    console.log('Environment:', process.env.NODE_ENV);
+
+    // 3. Verify project ID
+    console.log('Project:', process.env.VOUCH_PROJECT_ID);
+
+    // 4. Test with dashboard
+    // Copy key directly from dashboard and test
+    ```
+  </Accordion>
+
+  <Accordion title="INVALID_KEY_TYPE Error" icon="browser">
+    **Error:** `Server keys cannot be used in browsers`
+
+    **Cause:** Using server key in client-side code
+
+    **Solution:**
+    ```typescript
+    // ❌ Bad - server key in browser
+    const vouch = new Vouch(projectId, process.env.VOUCH_SERVER_KEY);
+
+    // ✅ Good - client key in browser
+    const vouch = new Vouch(
+      process.env.NEXT_PUBLIC_PROJECT_ID,
+      process.env.NEXT_PUBLIC_CLIENT_KEY
+    );
+    ```
+  </Accordion>
+
+  <Accordion title="DOMAIN_NOT_ALLOWED Error" icon="shield">
+    **Error:** `Origin not in allowed domains list`
+
+    **Cause:** Client key used from unauthorized domain
+
+    **Solution:**
+    1. Check current domain: `console.log(window.location.origin)`
+    2. Go to dashboard → API Keys → Client Key → Domains
+    3. Add domain to allowed list
+    4. Test again
+
+    **Example:**
+    ```
+    Current origin: https://app.yourdomain.com
+    Allowed domains: yourdomain.com, *.yourdomain.com
+    Result: ✓ Matches wildcard pattern
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication Guide" icon="key" href="/guides/authentication">
+    Best practices for using API keys
+  </Card>
+
+  <Card title="Client vs Server" icon="code-compare" href="/guides/client-vs-server">
+    When to use each key type
+  </Card>
+
+  <Card title="Projects" icon="folder" href="/dashboard/projects">
+    Managing your projects
+  </Card>
+
+  <Card title="Team Management" icon="users" href="/dashboard/team-management">
+    Control team access to keys
+  </Card>
+</CardGroup>

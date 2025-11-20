@@ -1,0 +1,785 @@
+---
+title: 'Error Handling'
+description: 'Comprehensive guide to handling Vouch API errors'
+---
+
+## Overview
+
+Vouch provides structured error responses that help you handle failures gracefully and provide meaningful feedback to users. All errors follow a consistent format and include actionable error codes.
+
+## Error Response Structure
+
+All Vouch errors follow this format:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error description",
+    "status": 400,
+    "details": {
+      "field": "Additional context"
+    }
+  }
+}
+```
+
+<ParamField path="success" type="boolean">
+  Always `false` for error responses
+</ParamField>
+
+<ParamField path="error.code" type="string">
+  Machine-readable error code for programmatic handling
+</ParamField>
+
+<ParamField path="error.message" type="string">
+  Human-readable error description
+</ParamField>
+
+<ParamField path="error.status" type="number">
+  HTTP status code (400, 401, 403, 429, 500, etc.)
+</ParamField>
+
+<ParamField path="error.details" type="object">
+  Optional additional context about the error
+</ParamField>
+
+## Error Categories
+
+### Authentication Errors (401)
+
+<AccordionGroup>
+  <Accordion title="UNAUTHORIZED" icon="key">
+    **Cause:** Invalid or missing API key
+
+    ```json
+    {
+      "success": false,
+      "error": {
+        "code": "UNAUTHORIZED",
+        "message": "Invalid API key",
+        "status": 401
+      }
+    }
+    ```
+
+    **Solutions:**
+    - Verify API key is correct
+    - Check environment variables
+    - Ensure key hasn't been regenerated
+    - Confirm key is for correct environment (test vs live)
+
+    ```typescript
+    try {
+      await vouch.validate(email);
+    } catch (error) {
+      if (error.code === 'UNAUTHORIZED') {
+        console.error('Invalid API key - check configuration');
+        // Log to monitoring service
+        // Alert team
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="INVALID_KEY_TYPE" icon="browser">
+    **Cause:** Server key used in browser environment
+
+    ```json
+    {
+      "success": false,
+      "error": {
+        "code": "INVALID_KEY_TYPE",
+        "message": "Server keys cannot be used in browsers",
+        "status": 401
+      }
+    }
+    ```
+
+    **Solutions:**
+    - Use client key (ck_) for browser environments
+    - Move validation to server-side if server key is required
+    - Check key prefix in environment variables
+
+    ```typescript
+    // Ensure client key in browser
+    const apiKey = process.env.NEXT_PUBLIC_VOUCH_CLIENT_KEY;
+    if (!apiKey?.startsWith('ck_')) {
+      console.error('Client key required for browser usage');
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="MISSING_PROJECT_ID" icon="hashtag">
+    **Cause:** X-Project-Id header not provided
+
+    ```json
+    {
+      "success": false,
+      "error": {
+        "code": "MISSING_PROJECT_ID",
+        "message": "X-Project-Id header is required",
+        "status": 400
+      }
+    }
+    ```
+
+    **Solutions:**
+    - Ensure project ID is configured
+    - Verify environment variable is set
+    - Check SDK initialization
+
+    ```typescript
+    const projectId = process.env.VOUCH_PROJECT_ID;
+    if (!projectId) {
+      throw new Error('VOUCH_PROJECT_ID environment variable not set');
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Authorization Errors (403)
+
+<AccordionGroup>
+  <Accordion title="DOMAIN_NOT_ALLOWED" icon="shield">
+    **Cause:** Client key used from unauthorized domain
+
+    ```json
+    {
+      "success": false,
+      "error": {
+        "code": "DOMAIN_NOT_ALLOWED",
+        "message": "Origin 'https://unauthorized.com' not in allowed domains",
+        "status": 403,
+        "details": {
+          "origin": "https://unauthorized.com",
+          "allowedDomains": ["yourdomain.com", "*.yourdomain.com"]
+        }
+      }
+    }
+    ```
+
+    **Solutions:**
+    - Add domain to allowed list in dashboard
+    - Use wildcard patterns for subdomains
+    - Add localhost for development
+
+    ```typescript
+    try {
+      await vouch.validate(email);
+    } catch (error) {
+      if (error.code === 'DOMAIN_NOT_ALLOWED') {
+        console.error(`Domain ${error.details.origin} not authorized`);
+        console.log('Allowed domains:', error.details.allowedDomains);
+        // Show user-friendly message
+        showError('Configuration error - please contact support');
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="PROJECT_DISABLED" icon="ban">
+    **Cause:** Project has been disabled or suspended
+
+    ```json
+    {
+      "success": false,
+      "error": {
+        "code": "PROJECT_DISABLED",
+        "message": "Project has been disabled",
+        "status": 403
+      }
+    }
+    ```
+
+    **Solutions:**
+    - Check dashboard for project status
+    - Verify billing information
+    - Contact support if unexpected
+  </Accordion>
+</AccordionGroup>
+
+### Validation Errors (400)
+
+<AccordionGroup>
+  <Accordion title="INVALID_EMAIL" icon="at">
+    **Cause:** Malformed email address provided
+
+    ```json
+    {
+      "success": false,
+      "error": {
+        "code": "INVALID_EMAIL",
+        "message": "Email address format is invalid",
+        "status": 400,
+        "details": {
+          "email": "not-an-email"
+        }
+      }
+    }
+    ```
+
+    **Solutions:**
+    - Validate email format client-side first
+    - Provide clear error message to user
+    - Use basic regex before API call
+
+    ```typescript
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(email)) {
+      showError('Please enter a valid email address');
+      return; // Don't call API
+    }
+
+    try {
+      await vouch.validate(email);
+    } catch (error) {
+      if (error.code === 'INVALID_EMAIL') {
+        showError('Email address format is invalid');
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="MISSING_EMAIL" icon="envelope">
+    **Cause:** Email parameter not provided
+
+    ```json
+    {
+      "success": false,
+      "error": {
+        "code": "MISSING_EMAIL",
+        "message": "Email address is required",
+        "status": 400
+      }
+    }
+    ```
+
+    **Solutions:**
+    - Ensure email is provided
+    - Add client-side validation
+    - Check form data structure
+  </Accordion>
+</AccordionGroup>
+
+### Rate Limit Errors (429)
+
+<AccordionGroup>
+  <Accordion title="RATE_LIMIT_EXCEEDED" icon="gauge">
+    **Cause:** Too many requests in time window
+
+    ```json
+    {
+      "success": false,
+      "error": {
+        "code": "RATE_LIMIT_EXCEEDED",
+        "message": "Rate limit exceeded. Try again in 2834 seconds.",
+        "status": 429,
+        "retryAfter": 2834
+      }
+    }
+    ```
+
+    **Solutions:**
+    - Implement exponential backoff
+    - Add request queuing
+    - Cache validation results
+    - Upgrade plan for higher limits
+
+    ```typescript
+    async function validateWithRetry(email: string, maxRetries = 3) {
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          return await vouch.validate(email);
+        } catch (error) {
+          if (error.code === 'RATE_LIMIT_EXCEEDED') {
+            if (attempt === maxRetries - 1) throw error;
+
+            const delay = Math.pow(2, attempt) * 1000;
+            console.log(`Rate limited. Retrying in ${delay}ms...`);
+            await sleep(delay);
+          } else {
+            throw error;
+          }
+        }
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Server Errors (500)
+
+<AccordionGroup>
+  <Accordion title="INTERNAL_ERROR" icon="server">
+    **Cause:** Unexpected server error
+
+    ```json
+    {
+      "success": false,
+      "error": {
+        "code": "INTERNAL_ERROR",
+        "message": "An unexpected error occurred",
+        "status": 500
+      }
+    }
+    ```
+
+    **Solutions:**
+    - Retry request with exponential backoff
+    - Log error for investigation
+    - Provide fallback validation
+    - Contact support if persistent
+
+    ```typescript
+    try {
+      return await vouch.validate(email);
+    } catch (error) {
+      if (error.status === 500) {
+        // Log to monitoring service
+        logger.error('Vouch API error', { error, email });
+
+        // Retry once
+        await sleep(1000);
+        try {
+          return await vouch.validate(email);
+        } catch (retryError) {
+          // Fallback to basic validation
+          return basicValidation(email);
+        }
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="SERVICE_UNAVAILABLE" icon="circle-exclamation">
+    **Cause:** Service temporarily unavailable
+
+    ```json
+    {
+      "success": false,
+      "error": {
+        "code": "SERVICE_UNAVAILABLE",
+        "message": "Service temporarily unavailable",
+        "status": 503
+      }
+    }
+    ```
+
+    **Solutions:**
+    - Implement retry logic
+    - Use fallback validation
+    - Queue requests for later processing
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling Patterns
+
+### Basic Error Handling
+
+```typescript
+async function validateEmail(email: string) {
+  try {
+    const result = await vouch.validate(email);
+    return result;
+  } catch (error) {
+    console.error('Validation error:', error);
+
+    // Provide user-friendly message
+    if (error.code === 'INVALID_EMAIL') {
+      throw new Error('Please enter a valid email address');
+    } else if (error.code === 'RATE_LIMIT_EXCEEDED') {
+      throw new Error('Too many requests. Please try again later.');
+    } else {
+      throw new Error('Validation failed. Please try again.');
+    }
+  }
+}
+```
+
+### Comprehensive Error Handler
+
+```typescript
+class VouchErrorHandler {
+  async validate(email: string) {
+    try {
+      return await vouch.validate(email);
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+
+  private handleError(error: any): never {
+    // Authentication errors
+    if (error.code === 'UNAUTHORIZED') {
+      this.logError('Invalid API key', error);
+      throw new Error('Configuration error');
+    }
+
+    if (error.code === 'INVALID_KEY_TYPE') {
+      this.logError('Wrong key type', error);
+      throw new Error('Configuration error');
+    }
+
+    // Authorization errors
+    if (error.code === 'DOMAIN_NOT_ALLOWED') {
+      this.logError('Domain not allowed', error);
+      throw new Error('Access denied');
+    }
+
+    // Validation errors
+    if (error.code === 'INVALID_EMAIL') {
+      throw new Error('Invalid email format');
+    }
+
+    // Rate limiting
+    if (error.code === 'RATE_LIMIT_EXCEEDED') {
+      this.logWarning('Rate limit exceeded', error);
+      throw new Error('Too many requests. Please try again later.');
+    }
+
+    // Server errors
+    if (error.status >= 500) {
+      this.logError('Server error', error);
+      throw new Error('Service temporarily unavailable');
+    }
+
+    // Unknown error
+    this.logError('Unknown error', error);
+    throw new Error('Validation failed');
+  }
+
+  private logError(message: string, error: any) {
+    console.error(message, {
+      code: error.code,
+      status: error.status,
+      message: error.message
+    });
+  }
+
+  private logWarning(message: string, error: any) {
+    console.warn(message, {
+      code: error.code,
+      retryAfter: error.retryAfter
+    });
+  }
+}
+```
+
+### With Retry Logic
+
+```typescript
+async function validateWithRetry(
+  email: string,
+  options = { maxRetries: 3, timeout: 5000 }
+) {
+  let lastError: any;
+
+  for (let attempt = 0; attempt < options.maxRetries; attempt++) {
+    try {
+      // Add timeout
+      const result = await Promise.race([
+        vouch.validate(email),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('TIMEOUT')), options.timeout)
+        )
+      ]);
+
+      return result;
+    } catch (error: any) {
+      lastError = error;
+
+      // Don't retry on client errors
+      if (error.status >= 400 && error.status < 500) {
+        if (error.code !== 'RATE_LIMIT_EXCEEDED') {
+          throw error;
+        }
+      }
+
+      // Exponential backoff
+      if (attempt < options.maxRetries - 1) {
+        const delay = Math.pow(2, attempt) * 1000;
+        await sleep(delay);
+      }
+    }
+  }
+
+  throw lastError;
+}
+```
+
+### With Fallback Validation
+
+```typescript
+async function validateWithFallback(email: string) {
+  try {
+    // Try Vouch API
+    return await vouch.validate(email);
+  } catch (error) {
+    console.warn('Vouch validation failed, using fallback', error);
+
+    // Fallback to basic validation
+    return {
+      valid: isValidEmailFormat(email),
+      recommendation: isValidEmailFormat(email) ? 'flag' : 'block',
+      validations: {
+        syntax: {
+          valid: isValidEmailFormat(email),
+          message: 'Basic syntax check'
+        }
+      },
+      fallback: true
+    };
+  }
+}
+
+function isValidEmailFormat(email: string): boolean {
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(email);
+}
+```
+
+## User-Facing Error Messages
+
+### Error Message Map
+
+```typescript
+const errorMessages: Record<string, string> = {
+  INVALID_EMAIL: 'Please enter a valid email address',
+  MISSING_EMAIL: 'Email address is required',
+  RATE_LIMIT_EXCEEDED: 'Too many attempts. Please try again in a few minutes.',
+  UNAUTHORIZED: 'Service temporarily unavailable. Please try again later.',
+  INVALID_KEY_TYPE: 'Service configuration error. Please contact support.',
+  DOMAIN_NOT_ALLOWED: 'Access denied. Please contact support.',
+  INTERNAL_ERROR: 'Something went wrong. Please try again.',
+  SERVICE_UNAVAILABLE: 'Service temporarily unavailable. Please try again later.',
+};
+
+function getUserMessage(error: any): string {
+  return errorMessages[error.code] || 'Validation failed. Please try again.';
+}
+
+// Usage
+try {
+  await vouch.validate(email);
+} catch (error) {
+  showError(getUserMessage(error));
+}
+```
+
+### React Error Boundary
+
+```tsx
+import { Component, ReactNode } from 'react';
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+interface State {
+  hasError: boolean;
+  error?: Error;
+}
+
+class VouchErrorBoundary extends Component<Props, State> {
+  state: State = { hasError: false };
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error('Vouch validation error:', error, errorInfo);
+
+    // Log to monitoring service
+    if (error.message.includes('VOUCH_')) {
+      this.logToMonitoring(error);
+    }
+  }
+
+  logToMonitoring(error: Error) {
+    // Send to your monitoring service
+    console.error('Vouch error logged:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="error-message">
+          Unable to validate email. Please try again later.
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+```
+
+## Monitoring & Alerting
+
+### Error Tracking
+
+```typescript
+import * as Sentry from '@sentry/node';
+
+async function validateWithMonitoring(email: string) {
+  try {
+    return await vouch.validate(email);
+  } catch (error: any) {
+    // Log to Sentry
+    Sentry.captureException(error, {
+      tags: {
+        service: 'vouch',
+        errorCode: error.code
+      },
+      extra: {
+        email: email.replace(/^(.{3}).*(@.*)$/, '$1***$2'), // Redact
+        status: error.status
+      }
+    });
+
+    throw error;
+  }
+}
+```
+
+### Custom Metrics
+
+```typescript
+class VouchMetrics {
+  private metrics = {
+    totalRequests: 0,
+    errors: new Map<string, number>(),
+    rateLimitHits: 0
+  };
+
+  async validate(email: string) {
+    this.metrics.totalRequests++;
+
+    try {
+      return await vouch.validate(email);
+    } catch (error: any) {
+      // Track error
+      const count = this.metrics.errors.get(error.code) || 0;
+      this.metrics.errors.set(error.code, count + 1);
+
+      if (error.code === 'RATE_LIMIT_EXCEEDED') {
+        this.metrics.rateLimitHits++;
+      }
+
+      // Alert if error rate is high
+      if (this.getErrorRate() > 0.1) {
+        this.sendAlert('High error rate detected');
+      }
+
+      throw error;
+    }
+  }
+
+  getErrorRate(): number {
+    const totalErrors = Array.from(this.metrics.errors.values())
+      .reduce((sum, count) => sum + count, 0);
+    return totalErrors / this.metrics.totalRequests;
+  }
+
+  sendAlert(message: string) {
+    console.error(`🚨 Alert: ${message}`);
+    // Send to monitoring service
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Handle Errors" icon="shield">
+    Never let errors propagate without handling:
+
+    ```typescript
+    // ❌ Bad
+    const result = await vouch.validate(email);
+
+    // ✅ Good
+    try {
+      const result = await vouch.validate(email);
+    } catch (error) {
+      handleError(error);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Provide User-Friendly Messages" icon="message">
+    Don't expose technical errors to users:
+
+    ```typescript
+    // ❌ Bad
+    showError(error.message); // "Invalid API key"
+
+    // ✅ Good
+    showError('Unable to validate email. Please try again.');
+    ```
+  </Accordion>
+
+  <Accordion title="Log for Debugging" icon="bug">
+    Log errors with context:
+
+    ```typescript
+    console.error('Vouch validation failed', {
+      code: error.code,
+      status: error.status,
+      email: email.substring(0, 3) + '***', // Redact
+      timestamp: new Date().toISOString()
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Implement Retries" icon="rotate">
+    Retry transient errors with backoff:
+
+    ```typescript
+    const retryableErrors = [
+      'RATE_LIMIT_EXCEEDED',
+      'INTERNAL_ERROR',
+      'SERVICE_UNAVAILABLE'
+    ];
+
+    if (retryableErrors.includes(error.code)) {
+      await retryWithBackoff();
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor Error Rates" icon="chart-line">
+    Track and alert on error patterns:
+
+    ```typescript
+    if (errorRate > 0.05) {
+      sendAlert('Vouch error rate above 5%');
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Rate Limits" icon="gauge" href="/guides/rate-limits">
+    Understanding rate limiting
+  </Card>
+
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Integration best practices
+  </Card>
+
+  <Card title="Testing" icon="flask" href="/guides/testing">
+    Testing strategies
+  </Card>
+
+  <Card title="API Errors" icon="book" href="/api-reference/errors">
+    Complete error reference
+  </Card>
+</CardGroup>

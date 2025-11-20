@@ -1,0 +1,849 @@
+---
+title: 'Testing Guide'
+description: 'Testing strategies for Vouch email validation integration'
+---
+
+## Overview
+
+This guide covers testing strategies for applications integrated with Vouch, including unit tests, integration tests, and end-to-end testing approaches.
+
+## Test Environment Setup
+
+### Test API Keys
+
+Vouch provides test keys that don't count against your quota:
+
+```bash
+# .env.test
+VOUCH_PROJECT_ID=proj_test_1234567890
+VOUCH_CLIENT_KEY=ck_test_1234567890abcdef
+VOUCH_SERVER_KEY=sk_test_1234567890abcdef
+```
+
+<Info>
+  Test keys behave identically to live keys but don't count toward your monthly quota. Use them freely during development and testing.
+</Info>
+
+### Test Configuration
+
+Create a test-specific configuration:
+
+```typescript
+// config/test.ts
+export const testConfig = {
+  vouch: {
+    projectId: process.env.VOUCH_TEST_PROJECT_ID!,
+    serverKey: process.env.VOUCH_TEST_SERVER_KEY!,
+    enabled: true,
+    timeout: 10000 // Higher timeout for tests
+  }
+};
+```
+
+## Unit Testing
+
+### Mocking the SDK
+
+Mock Vouch SDK for isolated unit tests:
+
+<Tabs>
+  <Tab title="Vitest">
+    ```typescript
+    import { vi, describe, it, expect, beforeEach } from 'vitest';
+    import { validateEmail } from './validation';
+
+    // Mock the Vouch module
+    vi.mock('@vouch/node', () => ({
+      default: vi.fn().mockImplementation(() => ({
+        validate: vi.fn()
+      }))
+    }));
+
+    describe('validateEmail', () => {
+      beforeEach(() => {
+        vi.clearAllMocks();
+      });
+
+      it('returns valid for allowed emails', async () => {
+        const mockValidate = vi.fn().mockResolvedValue({
+          valid: true,
+          recommendation: 'allow',
+          validations: {
+            syntax: { valid: true }
+          }
+        });
+
+        const Vouch = (await import('@vouch/node')).default;
+        (Vouch as any).mockImplementation(() => ({
+          validate: mockValidate
+        }));
+
+        const result = await validateEmail('user@example.com');
+
+        expect(result.valid).toBe(true);
+        expect(mockValidate).toHaveBeenCalledWith('user@example.com');
+      });
+
+      it('returns invalid for blocked emails', async () => {
+        const mockValidate = vi.fn().mockResolvedValue({
+          valid: false,
+          recommendation: 'block',
+          validations: {
+            disposable: { valid: false }
+          }
+        });
+
+        const Vouch = (await import('@vouch/node')).default;
+        (Vouch as any).mockImplementation(() => ({
+          validate: mockValidate
+        }));
+
+        const result = await validateEmail('test@tempmail.com');
+
+        expect(result.valid).toBe(false);
+        expect(result.recommendation).toBe('block');
+      });
+
+      it('handles API errors gracefully', async () => {
+        const mockValidate = vi.fn().mockRejectedValue({
+          code: 'RATE_LIMIT_EXCEEDED',
+          message: 'Rate limit exceeded'
+        });
+
+        const Vouch = (await import('@vouch/node')).default;
+        (Vouch as any).mockImplementation(() => ({
+          validate: mockValidate
+        }));
+
+        await expect(validateEmail('user@example.com')).rejects.toThrow();
+      });
+    });
+    ```
+  </Tab>
+
+  <Tab title="Jest">
+    ```typescript
+    import { validateEmail } from './validation';
+
+    jest.mock('@vouch/node', () => {
+      return jest.fn().mockImplementation(() => ({
+        validate: jest.fn()
+      }));
+    });
+
+    describe('validateEmail', () => {
+      let mockValidate: jest.Mock;
+
+      beforeEach(() => {
+        const Vouch = require('@vouch/node');
+        mockValidate = new Vouch().validate;
+        mockValidate.mockClear();
+      });
+
+      it('validates email successfully', async () => {
+        mockValidate.mockResolvedValue({
+          valid: true,
+          recommendation: 'allow'
+        });
+
+        const result = await validateEmail('user@example.com');
+
+        expect(result.valid).toBe(true);
+        expect(mockValidate).toHaveBeenCalledWith('user@example.com');
+      });
+
+      it('blocks disposable emails', async () => {
+        mockValidate.mockResolvedValue({
+          valid: false,
+          recommendation: 'block',
+          validations: {
+            disposable: { valid: false }
+          }
+        });
+
+        const result = await validateEmail('test@tempmail.com');
+
+        expect(result.recommendation).toBe('block');
+      });
+    });
+    ```
+  </Tab>
+
+  <Tab title="Mocha/Chai">
+    ```typescript
+    import { expect } from 'chai';
+    import sinon from 'sinon';
+    import { validateEmail } from './validation';
+
+    describe('validateEmail', () => {
+      let sandbox: sinon.SinonSandbox;
+      let mockValidate: sinon.SinonStub;
+
+      beforeEach(() => {
+        sandbox = sinon.createSandbox();
+        mockValidate = sandbox.stub();
+
+        // Mock Vouch SDK
+        sandbox.stub(require('@vouch/node'), 'default').returns({
+          validate: mockValidate
+        });
+      });
+
+      afterEach(() => {
+        sandbox.restore();
+      });
+
+      it('validates email successfully', async () => {
+        mockValidate.resolves({
+          valid: true,
+          recommendation: 'allow'
+        });
+
+        const result = await validateEmail('user@example.com');
+
+        expect(result.valid).to.be.true;
+        expect(mockValidate).to.have.been.calledWith('user@example.com');
+      });
+    });
+    ```
+  </Tab>
+</Tabs>
+
+### Testing Error Handling
+
+Test error scenarios:
+
+```typescript
+describe('Error Handling', () => {
+  it('handles UNAUTHORIZED error', async () => {
+    mockValidate.mockRejectedValue({
+      code: 'UNAUTHORIZED',
+      status: 401,
+      message: 'Invalid API key'
+    });
+
+    await expect(validateEmail('user@example.com')).rejects.toMatchObject({
+      code: 'UNAUTHORIZED'
+    });
+  });
+
+  it('handles RATE_LIMIT_EXCEEDED error', async () => {
+    mockValidate.mockRejectedValue({
+      code: 'RATE_LIMIT_EXCEEDED',
+      status: 429,
+      retryAfter: 3600
+    });
+
+    await expect(validateEmail('user@example.com')).rejects.toMatchObject({
+      code: 'RATE_LIMIT_EXCEEDED'
+    });
+  });
+
+  it('handles network timeout', async () => {
+    mockValidate.mockRejectedValue(new Error('ETIMEDOUT'));
+
+    const result = await validateEmail('user@example.com');
+
+    // Should fallback to basic validation
+    expect(result.fallback).toBe(true);
+  });
+});
+```
+
+### Testing with Fixtures
+
+Use fixtures for consistent test data:
+
+```typescript
+// fixtures/validation-responses.ts
+export const validationFixtures = {
+  validEmail: {
+    valid: true,
+    recommendation: 'allow',
+    validations: {
+      syntax: { valid: true, message: 'Valid format' },
+      disposable: { valid: true, message: 'Not disposable' },
+      mx: { valid: true, records: ['mx1.example.com'] }
+    }
+  },
+
+  disposableEmail: {
+    valid: false,
+    recommendation: 'block',
+    validations: {
+      syntax: { valid: true, message: 'Valid format' },
+      disposable: {
+        valid: false,
+        domain: 'tempmail.com',
+        message: 'Disposable email detected'
+      }
+    }
+  },
+
+  roleEmail: {
+    valid: true,
+    recommendation: 'flag',
+    validations: {
+      syntax: { valid: true, message: 'Valid format' },
+      role: {
+        valid: false,
+        role: 'admin',
+        message: 'Role-based email'
+      }
+    }
+  }
+};
+
+// Usage in tests
+import { validationFixtures } from './fixtures/validation-responses';
+
+it('handles disposable email', async () => {
+  mockValidate.mockResolvedValue(validationFixtures.disposableEmail);
+
+  const result = await validateEmail('test@tempmail.com');
+
+  expect(result.recommendation).toBe('block');
+});
+```
+
+## Integration Testing
+
+### Real API Tests
+
+Test with real Vouch API using test keys:
+
+```typescript
+import Vouch from '@vouch/node';
+import { testConfig } from './config/test';
+
+describe('Vouch Integration', () => {
+  let vouch: Vouch;
+
+  beforeAll(() => {
+    vouch = new Vouch(
+      testConfig.vouch.projectId,
+      testConfig.vouch.serverKey
+    );
+  });
+
+  describe('Valid Emails', () => {
+    it('validates Gmail address', async () => {
+      const result = await vouch.validate('test@gmail.com');
+
+      expect(result.valid).toBe(true);
+      expect(result.validations.syntax.valid).toBe(true);
+      expect(result.validations.mx.valid).toBe(true);
+    });
+
+    it('validates custom domain', async () => {
+      const result = await vouch.validate('user@example.com');
+
+      expect(result.validations.syntax.valid).toBe(true);
+    });
+  });
+
+  describe('Invalid Emails', () => {
+    it('blocks disposable email', async () => {
+      const result = await vouch.validate('test@tempmail.com');
+
+      expect(result.recommendation).toBe('block');
+      expect(result.validations.disposable.valid).toBe(false);
+    });
+
+    it('blocks malformed email', async () => {
+      const result = await vouch.validate('not-an-email');
+
+      expect(result.valid).toBe(false);
+      expect(result.validations.syntax.valid).toBe(false);
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('handles plus addressing', async () => {
+      const result = await vouch.validate('user+tag@example.com');
+
+      expect(result.validations.alias).toBeDefined();
+    });
+
+    it('detects role emails', async () => {
+      const result = await vouch.validate('admin@example.com');
+
+      expect(result.validations.role.valid).toBe(false);
+    });
+  });
+});
+```
+
+### Testing Rate Limits
+
+Test rate limit handling:
+
+```typescript
+describe('Rate Limiting', () => {
+  it('handles rate limit gracefully', async () => {
+    const emails = Array(1100).fill('test@example.com').map((e, i) => `test${i}@example.com`);
+
+    const results = [];
+    let rateLimitHit = false;
+
+    for (const email of emails) {
+      try {
+        const result = await vouch.validate(email);
+        results.push(result);
+      } catch (error: any) {
+        if (error.code === 'RATE_LIMIT_EXCEEDED') {
+          rateLimitHit = true;
+          break;
+        }
+      }
+    }
+
+    expect(rateLimitHit).toBe(true);
+    expect(results.length).toBeGreaterThan(0);
+  }, 120000); // 2 minute timeout
+});
+```
+
+### Testing Retry Logic
+
+Test exponential backoff:
+
+```typescript
+describe('Retry Logic', () => {
+  it('retries on rate limit', async () => {
+    let attempts = 0;
+
+    const mockValidate = vi.fn().mockImplementation(() => {
+      attempts++;
+      if (attempts < 3) {
+        return Promise.reject({
+          code: 'RATE_LIMIT_EXCEEDED',
+          retryAfter: 1
+        });
+      }
+      return Promise.resolve({
+        valid: true,
+        recommendation: 'allow'
+      });
+    });
+
+    const vouch = {
+      validate: mockValidate
+    };
+
+    const result = await validateWithRetry(vouch, 'test@example.com', {
+      maxRetries: 3
+    });
+
+    expect(attempts).toBe(3);
+    expect(result.valid).toBe(true);
+  });
+});
+```
+
+## End-to-End Testing
+
+### Playwright Tests
+
+Test complete user flows:
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test.describe('Signup Form', () => {
+  test('validates email on signup', async ({ page }) => {
+    await page.goto('/signup');
+
+    // Enter invalid email
+    await page.fill('[name="email"]', 'test@tempmail.com');
+    await page.click('[type="submit"]');
+
+    // Should show error
+    await expect(page.locator('.error')).toContainText('valid email');
+
+    // Enter valid email
+    await page.fill('[name="email"]', 'user@example.com');
+    await page.click('[type="submit"]');
+
+    // Should succeed
+    await expect(page).toHaveURL('/welcome');
+  });
+
+  test('shows inline validation feedback', async ({ page }) => {
+    await page.goto('/signup');
+
+    // Type email
+    await page.fill('[name="email"]', 'test@');
+
+    // Wait for validation
+    await page.waitForSelector('.validating');
+
+    // Complete email
+    await page.fill('[name="email"]', 'test@example.com');
+
+    // Should show success
+    await expect(page.locator('.success')).toBeVisible();
+  });
+});
+```
+
+### Cypress Tests
+
+```typescript
+describe('Email Validation', () => {
+  it('validates email inline', () => {
+    cy.visit('/signup');
+
+    // Type email
+    cy.get('[name="email"]').type('user@example.com');
+
+    // Wait for validation
+    cy.get('[data-testid="validation-status"]').should('contain', 'Validating');
+
+    // Check result
+    cy.get('[data-testid="validation-status"]').should('contain', 'valid', {
+      timeout: 5000
+    });
+  });
+
+  it('blocks disposable email', () => {
+    cy.visit('/signup');
+
+    cy.get('[name="email"]').type('test@tempmail.com');
+    cy.get('[type="submit"]').click();
+
+    cy.get('.error').should('contain', 'valid email');
+    cy.url().should('include', '/signup'); // Should not navigate
+  });
+});
+```
+
+## Testing Best Practices
+
+### 1. Test Pyramid
+
+Follow the test pyramid:
+
+```
+    /\
+   /  \    E2E Tests (Few)
+  /____\   Integration Tests (Some)
+ /______\  Unit Tests (Many)
+```
+
+<AccordionGroup>
+  <Accordion title="Unit Tests (70%)" icon="cube">
+    - Fast execution
+    - Mock Vouch SDK
+    - Test business logic
+    - Test error handling
+
+    ```typescript
+    // Fast, isolated, many tests
+    describe('validateEmail', () => {
+      it('validates format', () => { ... });
+      it('handles errors', () => { ... });
+      // ... 50+ tests
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Integration Tests (20%)" icon="plug">
+    - Use test API keys
+    - Test actual API responses
+    - Test key scenarios
+    - Slower execution
+
+    ```typescript
+    // Real API, focused scenarios
+    describe('Vouch Integration', () => {
+      it('validates real email', async () => { ... });
+      // ... 10-20 tests
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="E2E Tests (10%)" icon="browser">
+    - Test critical user flows
+    - Full stack integration
+    - Slowest execution
+    - Most realistic
+
+    ```typescript
+    // Full app, critical flows only
+    test('signup flow', async () => { ... });
+    // ... 3-5 tests
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### 2. Test Data Management
+
+Use consistent test data:
+
+```typescript
+// test-data/emails.ts
+export const testEmails = {
+  valid: [
+    'user@gmail.com',
+    'test@example.com',
+    'contact@company.co.uk'
+  ],
+  invalid: [
+    'not-an-email',
+    '@example.com',
+    'user@'
+  ],
+  disposable: [
+    'test@tempmail.com',
+    'spam@guerrillamail.com',
+    'temp@10minutemail.com'
+  ],
+  role: [
+    'admin@example.com',
+    'support@company.com',
+    'noreply@domain.com'
+  ]
+};
+
+// Usage
+import { testEmails } from './test-data/emails';
+
+describe('Disposable Detection', () => {
+  testEmails.disposable.forEach(email => {
+    it(`blocks ${email}`, async () => {
+      const result = await vouch.validate(email);
+      expect(result.recommendation).toBe('block');
+    });
+  });
+});
+```
+
+### 3. Parallel Test Execution
+
+Run tests in parallel when possible:
+
+```typescript
+// vitest.config.ts
+export default defineConfig({
+  test: {
+    threads: true,
+    maxThreads: 4,
+    minThreads: 2,
+    isolate: true
+  }
+});
+
+// Run specific test suites in parallel
+describe.concurrent('Validation Tests', () => {
+  it('test 1', async () => { ... });
+  it('test 2', async () => { ... });
+  it('test 3', async () => { ... });
+});
+```
+
+### 4. Test Timeouts
+
+Set appropriate timeouts:
+
+```typescript
+// Longer timeout for API calls
+describe('API Tests', () => {
+  it('validates email', async () => {
+    const result = await vouch.validate(email);
+    expect(result.valid).toBe(true);
+  }, 10000); // 10 second timeout
+});
+
+// Shorter timeout for unit tests
+describe('Unit Tests', () => {
+  it('parses email', () => {
+    const parsed = parseEmail('user@example.com');
+    expect(parsed.local).toBe('user');
+  }, 100); // 100ms timeout
+});
+```
+
+### 5. Cleanup After Tests
+
+Clean up test data:
+
+```typescript
+afterEach(async () => {
+  // Clear cache
+  cache.flushAll();
+
+  // Clear test database
+  await db.clearTestData();
+});
+
+afterAll(async () => {
+  // Close connections
+  await db.disconnect();
+});
+```
+
+## Continuous Integration
+
+### GitHub Actions
+
+```yaml
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          VOUCH_PROJECT_ID: ${{ secrets.VOUCH_TEST_PROJECT_ID }}
+          VOUCH_SERVER_KEY: ${{ secrets.VOUCH_TEST_SERVER_KEY }}
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          VOUCH_PROJECT_ID: ${{ secrets.VOUCH_TEST_PROJECT_ID }}
+          VOUCH_CLIENT_KEY: ${{ secrets.VOUCH_TEST_CLIENT_KEY }}
+```
+
+### GitLab CI
+
+```yaml
+# .gitlab-ci.yml
+stages:
+  - test
+
+test:unit:
+  stage: test
+  script:
+    - npm ci
+    - npm run test:unit
+
+test:integration:
+  stage: test
+  script:
+    - npm ci
+    - npm run test:integration
+  variables:
+    VOUCH_PROJECT_ID: $VOUCH_TEST_PROJECT_ID
+    VOUCH_SERVER_KEY: $VOUCH_TEST_SERVER_KEY
+
+test:e2e:
+  stage: test
+  script:
+    - npm ci
+    - npm run test:e2e
+  variables:
+    VOUCH_PROJECT_ID: $VOUCH_TEST_PROJECT_ID
+    VOUCH_CLIENT_KEY: $VOUCH_TEST_CLIENT_KEY
+```
+
+## Test Coverage
+
+### Coverage Configuration
+
+```typescript
+// vitest.config.ts
+export default defineConfig({
+  test: {
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'test/',
+        '**/*.test.ts'
+      ],
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80
+    }
+  }
+});
+```
+
+### Generate Coverage Reports
+
+```bash
+# Run tests with coverage
+npm run test:coverage
+
+# View HTML report
+open coverage/index.html
+```
+
+## Debugging Tests
+
+### Verbose Logging
+
+```typescript
+// Enable debug logging in tests
+process.env.DEBUG = 'vouch:*';
+
+const vouch = new Vouch(projectId, apiKey, {
+  debug: true,
+  onRequest: (config) => {
+    console.log('Request:', config);
+  },
+  onResponse: (response) => {
+    console.log('Response:', response);
+  }
+});
+```
+
+### Test Isolation
+
+Isolate problematic tests:
+
+```typescript
+// Run single test
+test.only('this test only', () => {
+  // ...
+});
+
+// Skip test
+test.skip('skip this test', () => {
+  // ...
+});
+
+// Run specific test file
+npx vitest run validation.test.ts
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Integration best practices
+  </Card>
+
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle errors gracefully
+  </Card>
+
+  <Card title="API Reference" icon="code" href="/api-reference/validate">
+    Complete API documentation
+  </Card>
+
+  <Card title="SDKs" icon="cube" href="/sdks/javascript">
+    SDK documentation
+  </Card>
+</CardGroup>
