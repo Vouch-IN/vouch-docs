@@ -1,0 +1,348 @@
+---
+title: 'Validation Overview'
+description: 'Complete overview of all 9 validation types in Vouch'
+---
+
+## Email Validation Strategy
+
+Vouch performs 9 different validation checks on every email address to ensure comprehensive fraud detection and email quality assurance. Each validation type can be individually configured to either **allow**, **flag**, or **block** based on your requirements.
+
+## The 9 Validation Types
+
+<CardGroup cols={3}>
+  <Card title="Syntax" icon="code" href="/validation/syntax">
+    RFC 5322 email format validation
+  </Card>
+  <Card title="Disposable" icon="trash" href="/validation/disposable">
+    Temporary email detection
+  </Card>
+  <Card title="MX Records" icon="server" href="/validation/mx-records">
+    Domain mail server verification
+  </Card>
+  <Card title="SMTP" icon="envelope" href="/validation/smtp">
+    Mailbox existence check
+  </Card>
+  <Card title="Catch-all" icon="inbox" href="/validation/catchall">
+    Accept-all domain detection
+  </Card>
+  <Card title="Role Email" icon="user-group" href="/validation/role-email">
+    Generic role address detection
+  </Card>
+  <Card title="Alias" icon="at" href="/validation/alias">
+    Plus-addressing detection
+  </Card>
+  <Card title="Device Fingerprint" icon="fingerprint" href="/validation/device-fingerprint">
+    Multi-account device tracking
+  </Card>
+  <Card title="IP Reputation" icon="shield-halved" href="/validation/ip-reputation">
+    VPN, Tor, and fraud detection
+  </Card>
+</CardGroup>
+
+## Validation Categories
+
+### Email Format Validation
+
+These checks verify the email address itself is valid and deliverable:
+
+<AccordionGroup>
+  <Accordion title="Syntax Validation" icon="code">
+    Ensures the email conforms to RFC 5322 standards. This is the most basic check that catches obvious typos and malformed addresses.
+
+    **Common failures:**
+    - Missing @ symbol
+    - Invalid characters
+    - Malformed domain
+    - Missing local or domain part
+  </Accordion>
+
+  <Accordion title="MX Records" icon="server">
+    Verifies that the email domain has valid mail exchange (MX) records configured in DNS. Without MX records, the domain cannot receive emails.
+
+    **What it checks:**
+    - DNS MX record existence
+    - At least one valid mail server
+    - Proper DNS configuration
+  </Accordion>
+
+  <Accordion title="SMTP Verification" icon="envelope">
+    Performs an actual SMTP handshake with the mail server to verify the specific mailbox exists without sending an email.
+
+    **What it checks:**
+    - Connects to mail server
+    - Verifies recipient mailbox
+    - No email actually sent
+  </Accordion>
+</AccordionGroup>
+
+### Quality & Risk Detection
+
+These checks identify potentially problematic or risky email addresses:
+
+<AccordionGroup>
+  <Accordion title="Disposable Email Detection" icon="trash">
+    Identifies temporary email services like Mailinator, Guerrilla Mail, or 10minutemail. These are often used for spam, fraud, or to avoid long-term commitment.
+
+    **Database includes:**
+    - 5,000+ known disposable domains
+    - Regular updates for new services
+    - Pattern-based detection
+  </Accordion>
+
+  <Accordion title="Catch-all Detection" icon="inbox">
+    Identifies domains configured to accept all emails regardless of whether the specific mailbox exists. This makes it impossible to verify if a user actually owns the email.
+
+    **Why it matters:**
+    - Can't verify mailbox exists
+    - Often used for spam collection
+    - Higher fraud risk
+  </Accordion>
+
+  <Accordion title="Role Email Detection" icon="user-group">
+    Detects generic organizational emails like admin@, support@, or info@ rather than personal email addresses.
+
+    **Common roles detected:**
+    - admin, administrator
+    - support, help, service
+    - info, contact, sales
+    - noreply, no-reply
+  </Accordion>
+
+  <Accordion title="Alias Detection" icon="at">
+    Identifies plus-addressing (user+tag@domain.com) which allows one email address to create unlimited variations.
+
+    **Why it matters:**
+    - Bypass "one email per account" limits
+    - Makes user tracking harder
+    - Can indicate abuse patterns
+  </Accordion>
+</AccordionGroup>
+
+### Fraud & Device Detection
+
+These checks identify patterns associated with fraudulent behavior:
+
+<AccordionGroup>
+  <Accordion title="Device Fingerprinting" icon="fingerprint">
+    Creates a unique fingerprint of the user's device to track it across multiple signups. Detects when the same device is used to create many accounts.
+
+    **Signals collected:**
+    - Browser fingerprint (99.5% accurate)
+    - Canvas fingerprinting
+    - WebGL fingerprinting
+    - Audio context fingerprinting
+    - Hardware signals
+  </Accordion>
+
+  <Accordion title="IP Reputation" icon="shield-halved">
+    Analyzes the user's IP address to detect VPNs, Tor networks, proxies, data centers, and known fraudulent IPs.
+
+    **Threats detected:**
+    - VPN services
+    - Tor exit nodes
+    - Proxy servers
+    - Data center IPs
+    - Known fraud networks
+  </Accordion>
+</AccordionGroup>
+
+## How Validation Works
+
+### Parallel Execution
+
+All validation checks run in parallel for maximum speed:
+
+```typescript
+// Conceptual flow
+const results = await Promise.allSettled([
+  validateSyntax(email),
+  checkDisposable(email),
+  verifyMX(domain),
+  checkSMTP(email),
+  detectCatchall(domain),
+  detectRole(email),
+  detectAlias(email),
+  fingerprintDevice(signals),
+  checkIPReputation(ip)
+]);
+```
+
+### Early Exit Strategy
+
+Vouch uses an intelligent early-exit strategy:
+
+<Steps>
+  <Step title="BLOCK checks use Promise.race()">
+    If any BLOCK-configured check fails, validation can exit early without waiting for other checks
+  </Step>
+  <Step title="FLAG checks run to completion">
+    All FLAG and ALLOW checks run fully to gather maximum intelligence
+  </Step>
+  <Step title="Results aggregated">
+    All signals combined into final recommendation: allow, flag, or block
+  </Step>
+</Steps>
+
+### Configuration per Check
+
+Each validation type can be configured independently:
+
+| Action | Behavior | When to Use |
+|--------|----------|-------------|
+| **ALLOW** | Check runs but doesn't affect recommendation | Gathering data only |
+| **FLAG** | Failure marks email as suspicious | Review recommended |
+| **BLOCK** | Failure immediately blocks email | Critical checks |
+
+## Validation Response Structure
+
+Each validation returns a consistent structure:
+
+```typescript
+{
+  "syntax": {
+    "valid": true,
+    "action": "block",
+    "message": "Email format is valid"
+  },
+  "disposable": {
+    "valid": false,
+    "action": "block",
+    "domain": "tempmail.com",
+    "message": "Disposable email detected"
+  },
+  "mx": {
+    "valid": true,
+    "action": "block",
+    "records": ["mx1.example.com", "mx2.example.com"],
+    "message": "MX records found"
+  }
+  // ... other validations
+}
+```
+
+### Field Definitions
+
+<ParamField path="valid" type="boolean">
+  Whether the check passed (true) or failed (false)
+</ParamField>
+
+<ParamField path="action" type="string">
+  The configured action for this check: `allow`, `flag`, or `block`
+</ParamField>
+
+<ParamField path="message" type="string">
+  Human-readable description of the result
+</ParamField>
+
+Additional fields vary by validation type and provide specific details about what was detected.
+
+## Recommendation Logic
+
+The final recommendation is determined by aggregating all validation signals:
+
+```typescript
+if (anyBlockChecksFailedAndConfiguredToBlock) {
+  return "block";
+} else if (anyFlagChecksFailedAndConfiguredToFlag) {
+  return "flag";
+} else {
+  return "allow";
+}
+```
+
+### Recommendation Values
+
+<CardGroup cols={3}>
+  <Card title="allow" icon="check" color="#10b981">
+    Email passed all checks. Safe to proceed with account creation.
+  </Card>
+  <Card title="flag" icon="flag" color="#f59e0b">
+    Suspicious signals detected. Consider manual review or additional verification.
+  </Card>
+  <Card title="block" icon="ban" color="#ef4444">
+    Critical validation failed. Reject this email address.
+  </Card>
+</CardGroup>
+
+## Default Configuration
+
+By default, Vouch uses this configuration:
+
+| Validation | Default Action | Rationale |
+|------------|----------------|-----------|
+| Syntax | BLOCK | Invalid format cannot receive email |
+| Disposable | BLOCK | Temporary emails indicate fraud |
+| MX Records | BLOCK | No mail server means undeliverable |
+| SMTP | FLAG | Some valid emails may fail SMTP |
+| Catch-all | FLAG | Reduces confidence but not always fraud |
+| Role Email | ALLOW | Often legitimate but worth tracking |
+| Alias | FLAG | Can indicate multi-accounting |
+| Device Fingerprint | FLAG | Multiple accounts may be legitimate |
+| IP Reputation | FLAG | VPNs used legitimately by some users |
+
+<Note>
+  You can customize these settings per project in your Vouch dashboard.
+</Note>
+
+## Performance Characteristics
+
+### Speed
+
+- **Average validation time:** 150-300ms
+- **Early exit scenarios:** 50-150ms
+- **Full validation:** 300-500ms
+
+### Accuracy
+
+| Check | Accuracy | Notes |
+|-------|----------|-------|
+| Syntax | 100% | Deterministic |
+| Disposable | 99%+ | Database updated daily |
+| MX Records | 100% | DNS lookup |
+| SMTP | 95%+ | Some servers reject verification |
+| Catch-all | 90%+ | Requires SMTP test |
+| Role Email | 99%+ | Pattern matching |
+| Alias | 100% | Pattern matching |
+| Device Fingerprint | 99.5% | FingerprintJS technology |
+| IP Reputation | 98%+ | Updated threat database |
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Enable All Validations" icon="shield-check">
+    Run all 9 validation types to get comprehensive insights. Even if you set some to ALLOW, the data is valuable for analytics and future decision-making.
+  </Accordion>
+
+  <Accordion title="Start Conservative" icon="gauge">
+    Begin with more checks set to FLAG rather than BLOCK. Review flagged accounts to understand your user base before tightening restrictions.
+  </Accordion>
+
+  <Accordion title="Monitor Analytics" icon="chart-line">
+    Use the dashboard to track which validations are most commonly failing. This helps you understand attack patterns and optimize your configuration.
+  </Accordion>
+
+  <Accordion title="A/B Test Configuration" icon="flask">
+    Test different configurations on a subset of traffic to find the optimal balance between security and user experience.
+  </Accordion>
+
+  <Accordion title="Combine with Other Signals" icon="puzzle-piece">
+    Use Vouch validation alongside your own business logic and risk scoring for the most comprehensive fraud prevention.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Syntax Validation" icon="code" href="/validation/syntax">
+    Learn about email format validation
+  </Card>
+  <Card title="Disposable Detection" icon="trash" href="/validation/disposable">
+    Understand temporary email detection
+  </Card>
+  <Card title="Device Fingerprinting" icon="fingerprint" href="/validation/device-fingerprint">
+    Deep dive into fraud detection
+  </Card>
+  <Card title="IP Reputation" icon="shield-halved" href="/validation/ip-reputation">
+    Learn about threat detection
+  </Card>
+</CardGroup>

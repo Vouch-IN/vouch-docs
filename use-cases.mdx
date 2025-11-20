@@ -1,0 +1,416 @@
+---
+title: 'Use Cases'
+description: 'Common scenarios where Vouch protects your application'
+---
+
+## Popular Use Cases
+
+Vouch helps protect your application from fraud, spam, and fake accounts across many scenarios:
+
+<CardGroup cols={2}>
+  <Card title="User Registration" icon="user-plus">
+    Block fake signups and disposable emails
+  </Card>
+
+  <Card title="Lead Generation" icon="funnel">
+    Ensure marketing leads are real and valid
+  </Card>
+
+  <Card title="E-commerce Checkout" icon="cart-shopping">
+    Prevent fraud during account creation
+  </Card>
+
+  <Card title="Newsletter Signups" icon="envelope">
+    Maintain clean email lists
+  </Card>
+
+  <Card title="Contest Entries" icon="trophy">
+    Detect multiple entries from same device
+  </Card>
+
+  <Card title="SaaS Free Trials" icon="flask">
+    Prevent trial abuse
+  </Card>
+</CardGroup>
+
+## Scenario Deep Dives
+
+### User Registration & Authentication
+
+**Challenge:** Fake accounts, bot signups, and disposable emails pollute your user database.
+
+**Vouch Solution:**
+- Block disposable emails at signup
+- Detect device reuse across multiple accounts
+- Flag suspicious IPs (VPNs, datacenter IPs)
+- Verify email domain has active mail servers
+
+```typescript
+// Example: Block fake signups
+const result = await vouch.validate(email);
+
+if (result.recommendation === 'block') {
+  return res.status(400).json({
+    error: 'Please use a permanent email address'
+  });
+}
+
+if (result.recommendation === 'flag') {
+  // Flag account for manual review
+  await db.users.create({
+    email,
+    needsReview: true,
+    flagReasons: result.signals
+  });
+}
+```
+
+**Results:**
+- **90%+ reduction** in fake signups
+- Cleaner user database
+- Reduced support burden
+
+---
+
+### Lead Generation & Marketing
+
+**Challenge:** Marketing campaigns attract spam submissions and invalid emails, wasting sales team time.
+
+**Vouch Solution:**
+- Validate email format before submission
+- Block role emails (info@, contact@) if targeting individuals
+- Detect catch-all domains that may not reach specific people
+- Track device fingerprints to identify repeat submissions
+
+```typescript
+// Example: Qualify leads in real-time
+const result = await vouch.validate(leadEmail);
+
+const leadQuality = {
+  email: result.normalized,
+  score: calculateScore(result),
+  flags: extractFlags(result),
+  deviceId: result.metadata.deviceId
+};
+
+if (result.signals.disposable.valid === false) {
+  leadQuality.score -= 50; // Major penalty
+}
+
+if (result.signals.catchall.valid === false) {
+  leadQuality.score -= 20; // Moderate penalty
+}
+
+await crm.createLead(leadQuality);
+```
+
+**Results:**
+- **Higher quality leads** to sales team
+- Reduced wasted follow-up time
+- Better conversion rates
+
+---
+
+### E-commerce & Marketplaces
+
+**Challenge:** Fraudulent accounts, chargebacks, and abuse of promotional offers.
+
+**Vouch Solution:**
+- Detect device fingerprints across multiple purchases
+- Identify VPNs and proxies commonly used in fraud
+- Block disposable emails used for one-time discount abuse
+- Verify customer emails are deliverable for order updates
+
+```typescript
+// Example: Prevent promo code abuse
+const result = await vouch.validate(email);
+
+// Check if this device has created multiple accounts
+const deviceHistory = result.metadata.deviceId;
+const previousOrders = await db.orders.find({
+  deviceId: deviceHistory,
+  promoCodeUsed: true
+});
+
+if (previousOrders.length > 0) {
+  return res.status(400).json({
+    error: 'Promo code already used'
+  });
+}
+
+// Check for high-risk signals
+if (result.signals.ipReputation.valid === false) {
+  await flagForFraudReview(email, 'VPN/Proxy detected');
+}
+```
+
+**Results:**
+- **Reduced promo code abuse** by 75%
+- Lower chargeback rates
+- Protected profit margins
+
+---
+
+### SaaS Free Trials
+
+**Challenge:** Users create multiple free trial accounts to extend access.
+
+**Vouch Solution:**
+- Device fingerprinting across trial signups
+- Detect plus-addressing aliases (user+trial1@gmail.com)
+- Track IP addresses for repeat trials
+- Block disposable emails used for throwaway trials
+
+```typescript
+// Example: Prevent trial abuse
+const result = await vouch.validate(email);
+
+// Check for alias (user+anything@domain.com)
+if (!result.signals.alias.valid) {
+  const baseEmail = normalizeAlias(result.normalized);
+  const existingTrial = await db.trials.findOne({
+    baseEmail: baseEmail
+  });
+
+  if (existingTrial) {
+    return res.status(400).json({
+      error: 'Trial already claimed for this email address'
+    });
+  }
+}
+
+// Check device fingerprint
+const existingTrialByDevice = await db.trials.findOne({
+  deviceId: result.metadata.deviceId
+});
+
+if (existingTrialByDevice) {
+  return res.status(400).json({
+    error: 'Trial limit reached'
+  });
+}
+```
+
+**Results:**
+- **85% reduction** in duplicate trials
+- Higher conversion to paid plans
+- Fair trial access
+
+---
+
+### Newsletter & Email Marketing
+
+**Challenge:** Invalid emails lead to hard bounces, damaging sender reputation.
+
+**Vouch Solution:**
+- Validate syntax before adding to list
+- Verify MX records to ensure deliverability
+- Optional SMTP verification for critical campaigns
+- Maintain clean, engaged lists
+
+```typescript
+// Example: Build clean email lists
+const result = await vouch.validate(subscriberEmail);
+
+// Only add valid, deliverable emails
+if (!result.signals.mx.valid) {
+  return res.status(400).json({
+    error: 'Email domain cannot receive mail'
+  });
+}
+
+// Flag catch-all domains (may have lower engagement)
+const emailListRecord = {
+  email: result.normalized,
+  quality: result.signals.catchall.valid ? 'high' : 'medium',
+  addedAt: new Date()
+};
+
+await emailList.add(emailListRecord);
+```
+
+**Results:**
+- **Lower bounce rates** (< 2%)
+- Protected sender reputation
+- Higher engagement rates
+- Reduced email service costs
+
+---
+
+### Contest & Giveaway Entries
+
+**Challenge:** Users create multiple entries to increase chances of winning.
+
+**Vouch Solution:**
+- Device fingerprinting to detect same person/device
+- Detect email aliases and plus-addressing
+- Track IP addresses
+- Ensure fair participation
+
+```typescript
+// Example: One entry per person
+const result = await vouch.validate(entryEmail);
+
+// Check for duplicate device
+const existingEntries = await db.entries.find({
+  $or: [
+    { deviceId: result.metadata.deviceId },
+    { ipAddress: result.metadata.ipAddress },
+    { emailHash: sha256(result.normalized) }
+  ]
+});
+
+if (existingEntries.length > 0) {
+  return res.status(400).json({
+    error: 'Only one entry per person allowed'
+  });
+}
+
+// Detect alias attempts
+if (!result.signals.alias.valid) {
+  const baseEmail = normalizeAlias(result.normalized);
+  const baseEmailEntry = await db.entries.findOne({
+    baseEmail: baseEmail
+  });
+
+  if (baseEmailEntry) {
+    return res.status(400).json({
+      error: 'Email alias detected. One entry per email address.'
+    });
+  }
+}
+```
+
+**Results:**
+- **Fair contests** for all participants
+- Reduced fraudulent entries by 90%
+- Increased brand trust
+
+---
+
+### Educational Platforms
+
+**Challenge:** Students sharing accounts or creating multiple accounts for different courses.
+
+**Vouch Solution:**
+- Verify institutional email domains (.edu)
+- Detect account sharing via device fingerprints
+- Ensure one account per student
+- Block disposable emails
+
+```typescript
+// Example: Institutional email verification
+const result = await vouch.validate(studentEmail);
+
+// Require .edu email for student discounts
+if (!studentEmail.endsWith('.edu')) {
+  return res.status(400).json({
+    error: 'Please use your institutional email address'
+  });
+}
+
+// Verify domain has MX records (some .edu emails are invalid)
+if (!result.signals.mx.valid) {
+  return res.status(400).json({
+    error: 'Unable to verify your institutional email'
+  });
+}
+
+// Track device for account sharing detection
+await trackDeviceUsage(result.metadata.deviceId, studentEmail);
+```
+
+**Results:**
+- **Verified student identities**
+- Reduced account sharing
+- Protected educational pricing
+
+---
+
+## Configuration by Use Case
+
+Different use cases need different validation strategies:
+
+| Use Case | Recommended Checks | Actions |
+|----------|-------------------|---------|
+| User Registration | All checks enabled | Block: syntax, disposable, MX<br/>Flag: device, IP, alias |
+| Lead Generation | Focus on deliverability | Block: syntax, MX<br/>Flag: role, catchall |
+| E-commerce | Fraud prevention focus | Block: disposable<br/>Flag: device, IP, alias |
+| Free Trials | Abuse prevention | Block: disposable, alias<br/>Flag: device, IP |
+| Newsletter | Deliverability focus | Block: syntax, MX<br/>Optional: SMTP |
+| Contests | Fairness focus | Flag: device, alias, IP |
+
+## Industry-Specific Solutions
+
+<AccordionGroup>
+  <Accordion title="Financial Services" icon="building-columns">
+    **Requirements:**
+    - KYC compliance
+    - Fraud prevention
+    - Account security
+
+    **Configuration:**
+    - Enable all validation checks
+    - Require SMTP verification
+    - Block VPNs and proxies
+    - Strict device fingerprinting
+  </Accordion>
+
+  <Accordion title="Healthcare" icon="heart-pulse">
+    **Requirements:**
+    - HIPAA compliance
+    - Patient verification
+    - Appointment confirmations
+
+    **Configuration:**
+    - Enable MX and SMTP verification
+    - Flag disposable emails
+    - Verify deliverability for critical comms
+  </Accordion>
+
+  <Accordion title="Gaming" icon="gamepad">
+    **Requirements:**
+    - Prevent multi-accounting
+    - Stop ban evasion
+    - Fair play
+
+    **Configuration:**
+    - Strong device fingerprinting
+    - Block disposable emails
+    - Track IP addresses
+    - Detect aliases
+  </Accordion>
+
+  <Accordion title="Cryptocurrency" icon="bitcoin">
+    **Requirements:**
+    - AML/KYC compliance
+    - Account security
+    - Fraud prevention
+
+    **Configuration:**
+    - All checks at maximum strength
+    - Block VPNs and Tor
+    - Require verified emails
+    - Device fingerprint tracking
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Get Started" icon="rocket" href="/quickstart">
+    Implement Vouch in 5 minutes
+  </Card>
+
+  <Card title="Validation Types" icon="shield" href="/validation/overview">
+    Explore all validation checks
+  </Card>
+
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Optimize for your use case
+  </Card>
+
+  <Card title="API Reference" icon="code" href="/api-reference/validate">
+    Complete API documentation
+  </Card>
+</CardGroup>

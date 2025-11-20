@@ -11,34 +11,102 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "how-it-works",
+              "use-cases"
+            ]
+          },
+          {
+            "group": "Validation Types",
+            "pages": [
+              "validation/overview",
+              "validation/syntax",
+              "validation/disposable",
+              "validation/mx-records",
+              "validation/smtp",
+              "validation/catchall",
+              "validation/role-email",
+              "validation/alias",
+              "validation/device-fingerprint",
+              "validation/ip-reputation"
+            ]
+          },
+          {
+            "group": "Integration Guides",
+            "pages": [
+              "guides/authentication",
+              "guides/client-vs-server",
+              "guides/rate-limits",
+              "guides/error-handling",
+              "guides/best-practices",
+              "guides/testing"
+            ]
+          },
+          {
+            "group": "Dashboard",
+            "pages": [
+              "dashboard/projects",
+              "dashboard/api-keys",
+              "dashboard/team-management",
+              "dashboard/analytics",
+              "dashboard/billing"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "api-reference/introduction",
+              "api-reference/authentication",
+              "api-reference/errors"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Endpoints",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api-reference/validate",
+              "api-reference/analytics-devices",
+              "api-reference/analytics-countries",
+              "api-reference/analytics-threats",
+              "api-reference/webhook"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "SDKs",
+        "groups": [
+          {
+            "group": "JavaScript/TypeScript",
+            "pages": [
+              "sdks/javascript",
+              "sdks/react",
+              "sdks/node"
+            ]
+          },
+          {
+            "group": "Frameworks",
+            "pages": [
+              "sdks/nextjs",
+              "sdks/remix"
+            ]
+          },
+          {
+            "group": "Mobile",
+            "pages": [
+              "sdks/ios",
+              "sdks/android",
+              "sdks/react-native"
             ]
           }
         ]
@@ -47,9 +115,14 @@
     "global": {
       "anchors": [
         {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
+          "anchor": "GitHub",
+          "href": "https://github.com/vouch-platform",
+          "icon": "github"
+        },
+        {
+          "anchor": "Dashboard",
+          "href": "https://vouch.expert",
+          "icon": "chart-line"
         }
       ]
     }

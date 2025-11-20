@@ -1,0 +1,204 @@
+---
+title: 'Next.js SDK'
+description: 'Full-stack email validation for Next.js applications'
+---
+
+## Overview
+
+The Vouch Next.js SDK provides seamless integration for both client and server components with automatic fingerprinting and optimized for Next.js App Router and Pages Router.
+
+<Note>
+  **Package:** `@vouch/next`
+  **Next.js Version:** 13+ (App Router) or 12+ (Pages Router)
+  **TypeScript:** Full type definitions included
+</Note>
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install @vouch/next
+```
+
+```bash yarn
+yarn add @vouch/next
+```
+
+```bash pnpm
+pnpm add @vouch/next
+```
+</CodeGroup>
+
+## App Router (Next.js 13+)
+
+### Server Component
+
+```typescript
+// app/api/validate/route.ts
+import { Vouch } from '@vouch/next';
+
+const vouch = new Vouch(
+  process.env.VOUCH_PROJECT_ID!,
+  process.env.VOUCH_SERVER_KEY!
+);
+
+export async function POST(request: Request) {
+  const { email } = await request.json();
+
+  // Automatically includes IP and User-Agent from request
+  const result = await vouch.validate(email);
+
+  return Response.json(result);
+}
+```
+
+### Client Component
+
+```typescript
+// app/signup/page.tsx
+'use client';
+
+import { VouchProvider, useValidateEmail } from '@vouch/next/client';
+
+export default function SignupPage() {
+  return (
+    <VouchProvider
+      projectId={process.env.NEXT_PUBLIC_VOUCH_PROJECT_ID!}
+      apiKey={process.env.NEXT_PUBLIC_VOUCH_CLIENT_KEY!}
+    >
+      <SignupForm />
+    </VouchProvider>
+  );
+}
+
+function SignupForm() {
+  const { validate, loading, result } = useValidateEmail();
+  const [email, setEmail] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await validate(email);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      <button disabled={loading}>Sign Up</button>
+    </form>
+  );
+}
+```
+
+## Pages Router (Next.js 12)
+
+### API Route
+
+```typescript
+// pages/api/validate.ts
+import { Vouch } from '@vouch/next';
+import type { NextApiRequest, NextApiResponse } from 'next';
+
+const vouch = new Vouch(
+  process.env.VOUCH_PROJECT_ID!,
+  process.env.VOUCH_SERVER_KEY!
+);
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const { email } = req.body;
+
+  const result = await vouch.validate(email, {
+    ip: req.socket.remoteAddress,
+    userAgent: req.headers['user-agent']
+  });
+
+  res.status(200).json(result);
+}
+```
+
+### Client Page
+
+```tsx
+// pages/signup.tsx
+import { VouchProvider, useValidateEmail } from '@vouch/next';
+
+export default function SignupPage() {
+  return (
+    <VouchProvider
+      projectId={process.env.NEXT_PUBLIC_VOUCH_PROJECT_ID!}
+      apiKey={process.env.NEXT_PUBLIC_VOUCH_CLIENT_KEY!}
+    >
+      <SignupForm />
+    </VouchProvider>
+  );
+}
+```
+
+## Environment Variables
+
+```bash
+# .env.local
+VOUCH_PROJECT_ID=your_project_id
+VOUCH_SERVER_KEY=your_server_key
+
+NEXT_PUBLIC_VOUCH_PROJECT_ID=your_project_id
+NEXT_PUBLIC_VOUCH_CLIENT_KEY=your_client_key
+```
+
+<Warning>
+  Use `NEXT_PUBLIC_` prefix only for client keys. Never expose server keys!
+</Warning>
+
+## Middleware
+
+Validate emails in Next.js middleware:
+
+```typescript
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { Vouch } from '@vouch/next';
+
+const vouch = new Vouch(
+  process.env.VOUCH_PROJECT_ID!,
+  process.env.VOUCH_SERVER_KEY!
+);
+
+export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname === '/api/signup') {
+    const { email } = await request.json();
+
+    const result = await vouch.validate(email);
+
+    if (result.recommendation === 'block') {
+      return NextResponse.json(
+        { error: 'Email blocked' },
+        { status: 400 }
+      );
+    }
+  }
+
+  return NextResponse.next();
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="React SDK" icon="react" href="/sdks/react">
+    React hooks details
+  </Card>
+  <Card title="Node.js SDK" icon="node" href="/sdks/node">
+    Server-side SDK
+  </Card>
+</CardGroup>

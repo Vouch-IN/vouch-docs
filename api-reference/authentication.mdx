@@ -1,0 +1,324 @@
+---
+title: 'Authentication'
+description: 'How to authenticate with the Vouch API'
+---
+
+## Overview
+
+Vouch uses **API keys** for authentication. Every request must include:
+
+1. **Authorization header** with your API key
+2. **X-Project-Id header** with your project ID
+
+```bash
+Authorization: Bearer your_api_key
+X-Project-Id: your_project_id
+```
+
+## API Key Types
+
+Vouch provides two types of API keys, each with different use cases and security characteristics:
+
+<CardGroup cols={2}>
+  <Card title="Client Keys" icon="browser">
+    **For browser and mobile apps**
+
+    - Restricted to allowed domains
+    - 1,000 requests/hour
+    - Safe to expose in client code
+    - Automatic device fingerprinting
+    - Cannot override IP/User-Agent
+  </Card>
+
+  <Card title="Server Keys" icon="server">
+    **For backend services**
+
+    - No domain restrictions
+    - 5,000 requests/hour
+    - Must be kept secret
+    - Can override IP/User-Agent
+    - Blocked from browsers
+  </Card>
+</CardGroup>
+
+## Test vs Live Environments
+
+Each project gets 4 API keys:
+
+| Environment | Key Type | Purpose |
+|-------------|----------|---------|
+| **Test** | Client | Development in browsers |
+| **Test** | Server | Development on servers |
+| **Live** | Client | Production in browsers |
+| **Live** | Server | Production on servers |
+
+<Info>
+  Test keys don't count against your monthly quota. Use them during development.
+</Info>
+
+## Security Features
+
+### Server Key Browser Protection
+
+Server keys are **automatically blocked** when used from browsers to prevent accidental exposure.
+
+Detection happens via:
+- `Origin` header presence
+- `Referer` header presence
+- `User-Agent` indicating browser
+
+```json
+// Response when server key used in browser
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_KEY_TYPE",
+    "message": "Server keys cannot be used in browsers"
+  }
+}
+```
+
+<Warning>
+  If you try to use a server key in client-side code, you'll immediately get a 401 error.
+</Warning>
+
+### Client Key Domain Validation
+
+Client keys are validated against your allowed domains list. Configure allowed domains in your dashboard:
+
+**Allowed Domain Patterns:**
+- `example.com` - Exact match
+- `*.example.com` - Wildcard subdomain
+- `localhost:3000` - Development domains
+
+```json
+// Response when domain not allowed
+{
+  "success": false,
+  "error": {
+    "code": "DOMAIN_NOT_ALLOWED",
+    "message": "Origin not in allowed domains list"
+  }
+}
+```
+
+## Authentication Examples
+
+<Tabs>
+  <Tab title="JavaScript (Client)">
+    ```javascript
+    const vouch = new Vouch(
+      'your-project-id',
+      'your-client-key' // CLIENT key for browser
+    );
+
+    const result = await vouch.validate('user@example.com');
+    ```
+  </Tab>
+
+  <Tab title="Node.js (Server)">
+    ```javascript
+    const vouch = new Vouch(
+      process.env.VOUCH_PROJECT_ID,
+      process.env.VOUCH_SERVER_KEY // SERVER key for backend
+    );
+
+    const result = await vouch.validate('user@example.com');
+    ```
+  </Tab>
+
+  <Tab title="cURL">
+    ```bash
+    curl -X POST https://api.vouch.expert/validate \
+      -H "Authorization: Bearer your_server_key" \
+      -H "X-Project-Id: your_project_id" \
+      -H "Content-Type: application/json" \
+      -d '{"email": "user@example.com"}'
+    ```
+  </Tab>
+
+  <Tab title="Python">
+    ```python
+    import os
+    import requests
+
+    headers = {
+        'Authorization': f'Bearer {os.getenv("VOUCH_SERVER_KEY")}',
+        'X-Project-Id': os.getenv('VOUCH_PROJECT_ID'),
+        'Content-Type': 'application/json'
+    }
+
+    response = requests.post(
+        'https://api.vouch.expert/validate',
+        headers=headers,
+        json={'email': 'user@example.com'}
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Managing API Keys
+
+### Finding Your Keys
+
+1. Go to [vouch.expert/dashboard](https://vouch.expert/dashboard)
+2. Select your project
+3. Navigate to **Settings** → **API Keys**
+4. Copy the appropriate key for your environment
+
+### Regenerating Keys
+
+If a key is compromised:
+
+1. Navigate to API Keys in your project settings
+2. Click **Regenerate** next to the compromised key
+3. Update your application with the new key
+4. Old key is immediately invalidated
+
+<Warning>
+  Regenerating a key immediately invalidates the old key. Update your application before regenerating production keys.
+</Warning>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Never commit API keys to version control" icon="github">
+    Use environment variables instead:
+
+    ```bash
+    # .env (never commit this file)
+    VOUCH_PROJECT_ID=your_project_id
+    VOUCH_CLIENT_KEY=your_client_key
+    VOUCH_SERVER_KEY=your_server_key
+    ```
+
+    ```javascript
+    // Good
+    const vouch = new Vouch(
+      process.env.VOUCH_PROJECT_ID,
+      process.env.VOUCH_SERVER_KEY
+    );
+
+    // Bad
+    const vouch = new Vouch(
+      'proj_1234567890',
+      'sk_live_1234567890abcdef'
+    );
+    ```
+  </Accordion>
+
+  <Accordion title="Use test keys during development" icon="flask">
+    Test keys don't count against quota:
+
+    ```javascript
+    const apiKey = process.env.NODE_ENV === 'production'
+      ? process.env.VOUCH_LIVE_KEY
+      : process.env.VOUCH_TEST_KEY;
+
+    const vouch = new Vouch(projectId, apiKey);
+    ```
+  </Accordion>
+
+  <Accordion title="Rotate keys periodically" icon="rotate">
+    For security, rotate API keys every 90 days:
+
+    1. Generate new key
+    2. Deploy with new key
+    3. Verify everything works
+    4. Delete old key
+  </Accordion>
+
+  <Accordion title="Use client keys in browsers" icon="browser">
+    Never use server keys in client-side code:
+
+    ```javascript
+    // Good - Client key in browser
+    const vouch = new Vouch(projectId, clientKey);
+
+    // Bad - Server key in browser (will be blocked)
+    const vouch = new Vouch(projectId, serverKey);
+    ```
+  </Accordion>
+
+  <Accordion title="Restrict client key domains" icon="shield">
+    Configure allowed domains to prevent unauthorized use:
+
+    - Add `localhost:*` for development
+    - Add your production domains
+    - Use wildcards carefully (`*.example.com`)
+  </Accordion>
+</AccordionGroup>
+
+## Error Responses
+
+### Invalid API Key
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid API key",
+    "status": 401
+  }
+}
+```
+
+### Missing Project ID
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "MISSING_PROJECT_ID",
+    "message": "X-Project-Id header is required",
+    "status": 400
+  }
+}
+```
+
+### Wrong Key Type
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_KEY_TYPE",
+    "message": "Server keys cannot be used in browsers",
+    "status": 401
+  }
+}
+```
+
+### Domain Not Allowed
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "DOMAIN_NOT_ALLOWED",
+    "message": "Origin 'https://unauthorized.com' not in allowed domains",
+    "status": 403
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client vs Server Keys" icon="key" href="/guides/client-vs-server">
+    Deep dive into key type differences
+  </Card>
+
+  <Card title="API Reference" icon="code" href="/api-reference/validate">
+    Explore the validation endpoint
+  </Card>
+
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle authentication errors
+  </Card>
+
+  <Card title="Dashboard" icon="gauge" href="https://vouch.expert">
+    Manage your API keys
+  </Card>
+</CardGroup>

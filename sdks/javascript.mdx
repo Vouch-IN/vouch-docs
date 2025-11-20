@@ -1,0 +1,608 @@
+---
+title: 'JavaScript SDK'
+description: 'Vouch SDK for vanilla JavaScript and browser applications'
+---
+
+## Overview
+
+The Vouch JavaScript SDK provides email validation and device fingerprinting for browser-based applications. It's framework-agnostic and works with any JavaScript project.
+
+<Note>
+  **Package:** `@vouch/js`
+  **Size:** ~45KB gzipped
+  **Browser Support:** All modern browsers (Chrome 90+, Firefox 88+, Safari 14+, Edge 90+)
+</Note>
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install @vouch/js
+```
+
+```bash yarn
+yarn add @vouch/js
+```
+
+```bash pnpm
+pnpm add @vouch/js
+```
+
+```html CDN
+<script src="https://cdn.vouch.expert/js/v1/vouch.min.js"></script>
+```
+</CodeGroup>
+
+## Quick Start
+
+```javascript
+import { Vouch } from '@vouch/js';
+
+// Initialize with your client API key
+const vouch = new Vouch(
+  'your-project-id',
+  'your-client-api-key'
+);
+
+// Validate an email
+const result = await vouch.validate('user@example.com');
+
+if (result.recommendation === 'block') {
+  alert('This email cannot be used');
+} else if (result.recommendation === 'flag') {
+  console.warn('Email flagged for review:', result.signals);
+} else {
+  console.log('Email is valid!');
+}
+```
+
+## Initialization
+
+### Basic Initialization
+
+```javascript
+import { Vouch } from '@vouch/js';
+
+const vouch = new Vouch(projectId, apiKey);
+```
+
+### With Options
+
+```javascript
+const vouch = new Vouch(projectId, apiKey, {
+  // Enable fingerprinting (default: true)
+  enableFingerprint: true,
+
+  // API endpoint (default: https://api.vouch.expert)
+  apiEndpoint: 'https://api.vouch.expert',
+
+  // Request timeout in ms (default: 30000)
+  timeout: 30000,
+
+  // Enable debug logging
+  debug: false,
+
+  // Custom fingerprint configuration
+  fingerprintOptions: {
+    disableDevFallback: false,
+    skipCache: false
+  }
+});
+```
+
+## Core Methods
+
+### validate()
+
+Validate an email address with automatic device fingerprinting:
+
+```javascript
+const result = await vouch.validate(email, options);
+```
+
+**Parameters:**
+
+<ParamField path="email" type="string" required>
+  Email address to validate
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional validation options
+
+  <Expandable title="Options">
+    <ParamField path="validations" type="object">
+      Override which validations to run
+
+      ```javascript
+      {
+        syntax: true,
+        disposable: true,
+        mx: true,
+        smtp: false,
+        catchall: true,
+        roleEmail: true,
+        alias: true,
+        deviceFingerprint: true,
+        ipReputation: true
+      }
+      ```
+    </ParamField>
+
+    <ParamField path="metadata" type="object">
+      Additional metadata to include
+
+      ```javascript
+      {
+        userId: '12345',
+        source: 'signup_form',
+        campaign: 'summer_promo'
+      }
+      ```
+    </ParamField>
+
+    <ParamField path="skipFingerprint" type="boolean">
+      Skip device fingerprinting (default: false)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Returns:** `Promise<ValidationResult>`
+
+```typescript
+interface ValidationResult {
+  success: boolean;
+  valid: boolean;
+  email: string;
+  normalized: string;
+  recommendation: 'allow' | 'flag' | 'block';
+  signals: {
+    syntax: ValidationSignal;
+    disposable: ValidationSignal;
+    mx: ValidationSignal;
+    smtp: ValidationSignal;
+    catchall: ValidationSignal;
+    roleEmail: ValidationSignal;
+    alias: ValidationSignal;
+    deviceFingerprint: ValidationSignal;
+    ipReputation: ValidationSignal;
+  };
+  metadata: {
+    deviceId: string;
+    ipAddress: string;
+    country: string;
+    timestamp: number;
+    processingTime: number;
+  };
+}
+```
+
+### getFingerprint()
+
+Get device fingerprint without validating an email:
+
+```javascript
+const fingerprint = await vouch.getFingerprint();
+
+console.log(fingerprint.visitorId); // Unique device ID
+console.log(fingerprint.confidence); // 0-1 confidence score
+```
+
+**Returns:** `Promise<Fingerprint>`
+
+```typescript
+interface Fingerprint {
+  visitorId: string;
+  confidence: number;
+  signals: {
+    userAgent: string;
+    screenResolution: string;
+    timezone: string;
+    language: string;
+    // ... 100+ signals
+  };
+}
+```
+
+### setMetadata()
+
+Set default metadata for all validations:
+
+```javascript
+vouch.setMetadata({
+  userId: '12345',
+  sessionId: 'abc-def-ghi',
+  source: 'mobile_app'
+});
+
+// Metadata automatically included in all subsequent validations
+const result = await vouch.validate('user@example.com');
+```
+
+## Usage Examples
+
+### Form Validation
+
+```html
+<form id="signup-form">
+  <input type="email" id="email" required>
+  <button type="submit">Sign Up</button>
+  <div id="error" class="hidden"></div>
+</form>
+
+<script type="module">
+  import { Vouch } from '@vouch/js';
+
+  const vouch = new Vouch(PROJECT_ID, API_KEY);
+  const form = document.getElementById('signup-form');
+  const emailInput = document.getElementById('email');
+  const errorDiv = document.getElementById('error');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const email = emailInput.value;
+
+    try {
+      const result = await vouch.validate(email);
+
+      if (result.recommendation === 'block') {
+        errorDiv.textContent = 'This email address cannot be used';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+
+      if (result.recommendation === 'flag') {
+        console.warn('Flagged email:', result.signals);
+      }
+
+      // Proceed with signup
+      submitForm(email);
+    } catch (error) {
+      console.error('Validation error:', error);
+      errorDiv.textContent = 'Unable to validate email';
+      errorDiv.classList.remove('hidden');
+    }
+  });
+</script>
+```
+
+### Real-time Validation
+
+```javascript
+import { Vouch } from '@vouch/js';
+
+const vouch = new Vouch(PROJECT_ID, API_KEY);
+const emailInput = document.querySelector('input[type="email"]');
+
+// Debounce validation
+let timeout;
+emailInput.addEventListener('input', (e) => {
+  clearTimeout(timeout);
+
+  const email = e.target.value;
+
+  // Only validate if email looks valid
+  if (!email.includes('@')) return;
+
+  timeout = setTimeout(async () => {
+    const result = await vouch.validate(email);
+
+    // Show inline feedback
+    if (result.recommendation === 'block') {
+      emailInput.classList.add('error');
+      showError('This email cannot be used');
+    } else {
+      emailInput.classList.remove('error');
+      hideError();
+    }
+  }, 500); // Wait 500ms after user stops typing
+});
+```
+
+### Disposable Email Check Only
+
+```javascript
+const result = await vouch.validate('user@example.com', {
+  validations: {
+    syntax: true,
+    disposable: true,
+    mx: false,
+    smtp: false,
+    catchall: false,
+    roleEmail: false,
+    alias: false,
+    deviceFingerprint: false,
+    ipReputation: false
+  }
+});
+
+if (!result.signals.disposable.valid) {
+  alert('Temporary emails are not allowed');
+}
+```
+
+### Error Handling
+
+```javascript
+try {
+  const result = await vouch.validate(email);
+
+  // Handle validation result
+  if (result.recommendation === 'block') {
+    throw new Error('Email blocked');
+  }
+
+} catch (error) {
+  if (error.code === 'QUOTA_EXCEEDED') {
+    console.error('Validation quota exceeded');
+  } else if (error.code === 'RATE_LIMITED') {
+    console.error('Too many requests, retry after:', error.retryAfter);
+  } else if (error.code === 'UNAUTHORIZED') {
+    console.error('Invalid API key');
+  } else if (error.code === 'NETWORK_ERROR') {
+    console.error('Network connectivity issue');
+  } else {
+    console.error('Validation error:', error.message);
+  }
+}
+```
+
+## Advanced Features
+
+### Custom Validation Logic
+
+```javascript
+async function validateEmailWithCustomRules(email) {
+  const result = await vouch.validate(email);
+
+  // Custom business logic
+  if (result.signals.disposable.valid === false) {
+    return {
+      valid: false,
+      reason: 'Disposable emails not allowed'
+    };
+  }
+
+  if (result.signals.deviceFingerprint.previousEmails > 10) {
+    return {
+      valid: false,
+      reason: 'Too many accounts from this device'
+    };
+  }
+
+  if (result.signals.ipReputation.threats.includes('vpn')) {
+    return {
+      valid: 'flag',
+      reason: 'VPN detected - requires verification'
+    };
+  }
+
+  return {
+    valid: true,
+    reason: 'Email is valid'
+  };
+}
+```
+
+### Batch Validation
+
+```javascript
+async function validateMultipleEmails(emails) {
+  const results = await Promise.all(
+    emails.map(email => vouch.validate(email))
+  );
+
+  return results.map((result, index) => ({
+    email: emails[index],
+    recommendation: result.recommendation,
+    signals: result.signals
+  }));
+}
+
+// Usage
+const emails = [
+  'user1@gmail.com',
+  'user2@tempmail.com',
+  'user3@company.com'
+];
+
+const results = await validateMultipleEmails(emails);
+console.log(results);
+```
+
+### Retry Logic
+
+```javascript
+async function validateWithRetry(email, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await vouch.validate(email);
+    } catch (error) {
+      if (error.code === 'RATE_LIMITED' && attempt < maxRetries) {
+        const delay = error.retryAfter * 1000 || 1000 * attempt;
+        console.log(`Rate limited, retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+```
+
+## TypeScript Support
+
+The SDK is written in TypeScript and includes full type definitions:
+
+```typescript
+import { Vouch, ValidationResult, ValidationSignal } from '@vouch/js';
+
+const vouch = new Vouch(projectId, apiKey);
+
+const result: ValidationResult = await vouch.validate('user@example.com');
+
+// Type-safe signal access
+const disposable: ValidationSignal = result.signals.disposable;
+
+if (!disposable.valid) {
+  console.log('Disposable email detected');
+}
+```
+
+## Browser Compatibility
+
+| Feature | Chrome | Firefox | Safari | Edge |
+|---------|--------|---------|--------|------|
+| Email Validation | 90+ | 88+ | 14+ | 90+ |
+| Device Fingerprinting | 90+ | 88+ | 14+ | 90+ |
+| Canvas Fingerprinting | 90+ | 88+ | 14+ | 90+ |
+| WebGL Fingerprinting | 90+ | 88+ | 14+ | 90+ |
+| Audio Fingerprinting | 90+ | 88+ | 14+ | 90+ |
+
+<Note>
+  For older browsers, use a polyfill for `fetch` and `Promise`.
+</Note>
+
+## CDN Usage
+
+For projects without a build system:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://cdn.vouch.expert/js/v1/vouch.min.js"></script>
+</head>
+<body>
+  <script>
+    // Vouch is available globally
+    const vouch = new Vouch.Vouch(PROJECT_ID, API_KEY);
+
+    async function validateEmail(email) {
+      const result = await vouch.validate(email);
+      console.log(result);
+    }
+  </script>
+</body>
+</html>
+```
+
+## Performance
+
+- **Bundle size:** ~45KB gzipped
+- **Initialization time:** < 100ms
+- **Fingerprint collection:** 200-500ms
+- **Validation request:** 150-300ms
+- **Total time:** 350-800ms
+
+## Common Patterns
+
+### Vue.js
+
+```vue
+<template>
+  <form @submit.prevent="handleSubmit">
+    <input v-model="email" type="email" required>
+    <button :disabled="loading">Sign Up</button>
+    <p v-if="error">{{ error }}</p>
+  </form>
+</template>
+
+<script>
+import { Vouch } from '@vouch/js';
+
+const vouch = new Vouch(PROJECT_ID, API_KEY);
+
+export default {
+  data() {
+    return {
+      email: '',
+      loading: false,
+      error: null
+    };
+  },
+  methods: {
+    async handleSubmit() {
+      this.loading = true;
+      this.error = null;
+
+      try {
+        const result = await vouch.validate(this.email);
+
+        if (result.recommendation === 'block') {
+          this.error = 'This email cannot be used';
+          return;
+        }
+
+        // Proceed with signup
+        await this.createAccount(this.email);
+      } catch (error) {
+        this.error = 'Validation failed';
+      } finally {
+        this.loading = false;
+      }
+    }
+  }
+};
+</script>
+```
+
+### Svelte
+
+```svelte
+<script>
+  import { Vouch } from '@vouch/js';
+
+  const vouch = new Vouch(PROJECT_ID, API_KEY);
+
+  let email = '';
+  let loading = false;
+  let error = null;
+
+  async function handleSubmit() {
+    loading = true;
+    error = null;
+
+    try {
+      const result = await vouch.validate(email);
+
+      if (result.recommendation === 'block') {
+        error = 'This email cannot be used';
+        return;
+      }
+
+      // Proceed
+      await createAccount(email);
+    } catch (err) {
+      error = 'Validation failed';
+    } finally {
+      loading = false;
+    }
+  }
+</script>
+
+<form on:submit|preventDefault={handleSubmit}>
+  <input bind:value={email} type="email" required>
+  <button disabled={loading}>Sign Up</button>
+  {#if error}
+    <p>{error}</p>
+  {/if}
+</form>
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="React SDK" icon="react" href="/sdks/react">
+    React hooks and components
+  </Card>
+  <Card title="Node.js SDK" icon="node" href="/sdks/node">
+    Server-side validation
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/validate">
+    REST API documentation
+  </Card>
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Production deployment tips
+  </Card>
+</CardGroup>

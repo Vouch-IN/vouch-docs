@@ -1,0 +1,483 @@
+---
+title: 'React SDK'
+description: 'React hooks and components for email validation'
+---
+
+## Overview
+
+The Vouch React SDK provides hooks and components for seamless email validation in React applications with automatic device fingerprinting.
+
+<Note>
+  **Package:** `@vouch/react`
+  **React Version:** 16.8+ (hooks required)
+  **TypeScript:** Full type definitions included
+</Note>
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install @vouch/react
+```
+
+```bash yarn
+yarn add @vouch/react
+```
+
+```bash pnpm
+pnpm add @vouch/react
+```
+</CodeGroup>
+
+## Quick Start
+
+```jsx
+import { VouchProvider, useValidateEmail } from '@vouch/react';
+
+function App() {
+  return (
+    <VouchProvider
+      projectId="your-project-id"
+      apiKey="your-client-api-key"
+    >
+      <SignupForm />
+    </VouchProvider>
+  );
+}
+
+function SignupForm() {
+  const { validate, loading, result, error } = useValidateEmail();
+  const [email, setEmail] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await validate(email);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        required
+      />
+      <button disabled={loading}>
+        {loading ? 'Validating...' : 'Sign Up'}
+      </button>
+
+      {result?.recommendation === 'block' && (
+        <p className="error">This email cannot be used</p>
+      )}
+    </form>
+  );
+}
+```
+
+## VouchProvider
+
+Wrap your app with `VouchProvider` to enable Vouch throughout your component tree:
+
+```jsx
+import { VouchProvider } from '@vouch/react';
+
+function App() {
+  return (
+    <VouchProvider
+      projectId={process.env.REACT_APP_VOUCH_PROJECT_ID}
+      apiKey={process.env.REACT_APP_VOUCH_API_KEY}
+      options={{
+        enableFingerprint: true,
+        debug: false,
+        timeout: 30000
+      }}
+    >
+      <YourApp />
+    </VouchProvider>
+  );
+}
+```
+
+### Props
+
+<ParamField path="projectId" type="string" required>
+  Your Vouch project ID
+</ParamField>
+
+<ParamField path="apiKey" type="string" required>
+  Your client API key
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional configuration (same as JavaScript SDK)
+</ParamField>
+
+## useValidateEmail()
+
+Primary hook for email validation:
+
+```jsx
+import { useValidateEmail } from '@vouch/react';
+
+function SignupForm() {
+  const {
+    validate,
+    loading,
+    result,
+    error,
+    reset
+  } = useValidateEmail();
+
+  const handleValidate = async () => {
+    const result = await validate('user@example.com');
+
+    if (result.recommendation === 'allow') {
+      // Proceed with signup
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={handleValidate} disabled={loading}>
+        Validate
+      </button>
+
+      {loading && <Spinner />}
+      {error && <Error message={error.message} />}
+      {result && <Result data={result} />}
+    </div>
+  );
+}
+```
+
+### Return Values
+
+<ResponseField name="validate" type="function">
+  Function to validate an email
+
+  ```typescript
+  validate(email: string, options?: ValidationOptions): Promise<ValidationResult>
+  ```
+</ResponseField>
+
+<ResponseField name="loading" type="boolean">
+  Whether validation is in progress
+</ResponseField>
+
+<ResponseField name="result" type="ValidationResult | null">
+  Validation result (null if not yet validated)
+</ResponseField>
+
+<ResponseField name="error" type="Error | null">
+  Error if validation failed
+</ResponseField>
+
+<ResponseField name="reset" type="function">
+  Reset state to initial values
+
+  ```typescript
+  reset(): void
+  ```
+</ResponseField>
+
+## useVouch()
+
+Access the Vouch instance directly:
+
+```jsx
+import { useVouch } from '@vouch/react';
+
+function Component() {
+  const vouch = useVouch();
+
+  useEffect(() => {
+    async function getFingerprint() {
+      const fp = await vouch.getFingerprint();
+      console.log('Device ID:', fp.visitorId);
+    }
+
+    getFingerprint();
+  }, [vouch]);
+}
+```
+
+## Complete Examples
+
+### Full Signup Form
+
+```jsx
+import { useState } from 'react';
+import { VouchProvider, useValidateEmail } from '@vouch/react';
+
+function App() {
+  return (
+    <VouchProvider projectId={PROJECT_ID} apiKey={API_KEY}>
+      <SignupForm />
+    </VouchProvider>
+  );
+}
+
+function SignupForm() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const { validate, loading, result } = useValidateEmail();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    // Validate email first
+    const validation = await validate(email);
+
+    if (validation.recommendation === 'block') {
+      alert('This email cannot be used');
+      return;
+    }
+
+    if (validation.recommendation === 'flag') {
+      const proceed = confirm(
+        'This email has suspicious signals. Continue anyway?'
+      );
+      if (!proceed) return;
+    }
+
+    // Proceed with signup
+    await createAccount({ email, password });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div>
+        <label>Email</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+        {result?.signals.disposable.valid === false && (
+          <p className="warning">Disposable email detected</p>
+        )}
+      </div>
+
+      <div>
+        <label>Password</label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </div>
+
+      <button type="submit" disabled={loading}>
+        {loading ? 'Validating...' : 'Sign Up'}
+      </button>
+    </form>
+  );
+}
+```
+
+### Real-time Validation
+
+```jsx
+import { useState, useEffect } from 'react';
+import { useValidateEmail } from '@vouch/react';
+
+function EmailInput() {
+  const [email, setEmail] = useState('');
+  const { validate, loading, result } = useValidateEmail();
+
+  // Debounced validation
+  useEffect(() => {
+    if (!email.includes('@')) return;
+
+    const timeout = setTimeout(() => {
+      validate(email);
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [email, validate]);
+
+  return (
+    <div className="email-input">
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Enter your email"
+      />
+
+      {loading && <Spinner />}
+
+      {result && (
+        <ValidationIndicator recommendation={result.recommendation} />
+      )}
+    </div>
+  );
+}
+
+function ValidationIndicator({ recommendation }) {
+  if (recommendation === 'allow') {
+    return <span className="valid">✓ Valid email</span>;
+  }
+
+  if (recommendation === 'flag') {
+    return <span className="warning">⚠ Suspicious email</span>;
+  }
+
+  if (recommendation === 'block') {
+    return <span className="error">✗ Invalid email</span>;
+  }
+
+  return null;
+}
+```
+
+### TypeScript
+
+```tsx
+import { useState } from 'react';
+import { useValidateEmail, ValidationResult } from '@vouch/react';
+
+function SignupForm() {
+  const [email, setEmail] = useState<string>('');
+  const {
+    validate,
+    loading,
+    result,
+    error
+  } = useValidateEmail();
+
+  const handleValidate = async (): Promise<void> => {
+    const validation: ValidationResult = await validate(email);
+
+    if (validation.recommendation === 'block') {
+      console.log('Email blocked');
+    }
+  };
+
+  return (
+    <form onSubmit={handleValidate}>
+      <input
+        type="email"
+        value={email}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          setEmail(e.target.value)
+        }
+      />
+      <button disabled={loading}>Validate</button>
+    </form>
+  );
+}
+```
+
+### Next.js Integration
+
+```jsx
+// app/layout.tsx (App Router)
+import { VouchProvider } from '@vouch/react';
+
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        <VouchProvider
+          projectId={process.env.NEXT_PUBLIC_VOUCH_PROJECT_ID!}
+          apiKey={process.env.NEXT_PUBLIC_VOUCH_CLIENT_KEY!}
+        >
+          {children}
+        </VouchProvider>
+      </body>
+    </html>
+  );
+}
+
+// app/signup/page.tsx
+'use client';
+
+import { useValidateEmail } from '@vouch/react';
+
+export default function SignupPage() {
+  const { validate, loading, result } = useValidateEmail();
+
+  // ... rest of component
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Wrap at Root Level" icon="sitemap">
+    Place `VouchProvider` at your app's root for consistent access:
+
+    ```jsx
+    // ✓ Good
+    <VouchProvider>
+      <App />
+    </VouchProvider>
+
+    // ✗ Bad - multiple providers
+    <Component>
+      <VouchProvider>...</VouchProvider>
+    </Component>
+    ```
+  </Accordion>
+
+  <Accordion title="Handle Loading States" icon="spinner">
+    Always show loading feedback during validation:
+
+    ```jsx
+    <button disabled={loading}>
+      {loading ? 'Validating...' : 'Submit'}
+    </button>
+    ```
+  </Accordion>
+
+  <Accordion title="Reset After Submit" icon="rotate">
+    Clear validation state after successful submission:
+
+    ```jsx
+    const { validate, reset } = useValidateEmail();
+
+    const handleSubmit = async (email) => {
+      const result = await validate(email);
+
+      if (result.recommendation === 'allow') {
+        await createAccount(email);
+        reset(); // Clear state
+      }
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Debounce Real-time Validation" icon="clock">
+    Avoid validating on every keystroke:
+
+    ```jsx
+    useEffect(() => {
+      const timeout = setTimeout(() => {
+        if (email) validate(email);
+      }, 500);
+
+      return () => clearTimeout(timeout);
+    }, [email]);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Next.js SDK" icon="N" href="/sdks/nextjs">
+    Next.js-specific integration
+  </Card>
+  <Card title="JavaScript SDK" icon="js" href="/sdks/javascript">
+    Vanilla JavaScript SDK
+  </Card>
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Production optimization
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/validate">
+    Complete API docs
+  </Card>
+</CardGroup>

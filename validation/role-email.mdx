@@ -1,0 +1,165 @@
+---
+title: 'Role Email Detection'
+description: 'Detect generic organizational email addresses'
+---
+
+## Overview
+
+Role email detection identifies generic organizational email addresses like admin@, support@, or info@ that belong to a group or function rather than an individual person. These addresses typically indicate lower engagement and may not be suitable for personal accounts.
+
+<Note>
+  Typically configured as **ALLOW** or **FLAG** since role emails can be legitimate for business signups.
+</Note>
+
+## What Are Role Emails?
+
+Role emails are addresses associated with a function or role within an organization rather than a specific person:
+
+- `admin@company.com` - Administration
+- `support@company.com` - Customer support
+- `info@company.com` - General inquiries
+- `sales@company.com` - Sales team
+- `noreply@company.com` - Automated systems
+
+## Common Role Prefixes
+
+<Tabs>
+  <Tab title="Administrative">
+    ```text
+    admin
+    administrator
+    root
+    webmaster
+    postmaster
+    hostmaster
+    ```
+  </Tab>
+
+  <Tab title="Support & Service">
+    ```text
+    support
+    help
+    service
+    helpdesk
+    customerservice
+    contact
+    ```
+  </Tab>
+
+  <Tab title="Sales & Marketing">
+    ```text
+    sales
+    marketing
+    info
+    hello
+    inquiries
+    business
+    ```
+  </Tab>
+
+  <Tab title="Technical">
+    ```text
+    noreply
+    no-reply
+    mailer
+    daemon
+    system
+    automated
+    ```
+  </Tab>
+
+  <Tab title="Departments">
+    ```text
+    hr
+    legal
+    billing
+    accounting
+    finance
+    ```
+  </Tab>
+</Tabs>
+
+## Validation Response
+
+### Role Email Detected
+
+```json
+{
+  "roleEmail": {
+    "valid": false,
+    "action": "allow",
+    "message": "Role-based email detected",
+    "role": "support",
+    "category": "customer_service",
+    "confidence": "high"
+  }
+}
+```
+
+### Personal Email
+
+```json
+{
+  "roleEmail": {
+    "valid": true,
+    "action": "allow",
+    "message": "Personal email address"
+  }
+}
+```
+
+## Why It Matters
+
+<CardGroup cols={2}>
+  <Card title="Lower Engagement" icon="chart-line-down">
+    Role emails are often shared or monitored infrequently
+  </Card>
+  <Card title="Multiple Users" icon="users">
+    Several people may access the same inbox
+  </Card>
+  <Card title="Not Personal" icon="user-slash">
+    Doesn't belong to a specific individual
+  </Card>
+  <Card title="May Not Reply" icon="envelope-open">
+    Some addresses like noreply@ cannot receive responses
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+### When to Block Role Emails
+
+- Personal social networks
+- Individual user accounts
+- Services requiring one person per account
+- Identity verification requirements
+
+### When to Allow Role Emails
+
+- B2B SaaS signups
+- Business account creation
+- Team collaboration tools
+- Enterprise software
+
+## Configuration
+
+```json
+{
+  "roleEmail": {
+    "action": "flag",
+    "blockedRoles": ["noreply", "no-reply", "postmaster"],
+    "allowForBusinessDomains": true
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Alias Detection" icon="at" href="/validation/alias">
+    Detect plus-addressing
+  </Card>
+  <Card title="Validation Overview" icon="shield" href="/validation/overview">
+    Back to overview
+  </Card>
+</CardGroup>

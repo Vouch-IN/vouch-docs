@@ -1,0 +1,569 @@
+---
+title: 'POST /validate'
+api: 'POST https://api.vouch.expert/validate'
+description: 'Validate an email address with device fingerprinting and fraud detection'
+---
+
+## Overview
+
+The `/validate` endpoint is the core of Vouch's API. It performs comprehensive email validation including syntax checking, disposable email detection, MX verification, and device fingerprinting.
+
+<Note>
+  You can use either the versioned endpoint `/v1/validate` or the latest endpoint `/validate`
+</Note>
+
+## Authentication
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with your API key
+
+  ```
+  Authorization: Bearer your_api_key_here
+  ```
+</ParamField>
+
+<ParamField header="X-Project-Id" type="string" required>
+  Your project ID
+
+  ```
+  X-Project-Id: your_project_id
+  ```
+</ParamField>
+
+## Request Body
+
+<ParamField body="email" type="string" required>
+  The email address to validate
+
+  ```json
+  "user@example.com"
+  ```
+</ParamField>
+
+<ParamField body="fingerprint" type="object">
+  Device fingerprint data (automatically included by client SDKs)
+
+  ```json
+  {
+    "visitorId": "abc123...",
+    "confidence": 0.95,
+    "signals": { ... }
+  }
+  ```
+</ParamField>
+
+<ParamField body="ip" type="string">
+  **Server-side only:** Override IP address for validation
+
+  ```json
+  "192.168.1.1"
+  ```
+</ParamField>
+
+<ParamField body="userAgent" type="string">
+  **Server-side only:** Override User-Agent for validation
+
+  ```json
+  "Mozilla/5.0 ..."
+  ```
+</ParamField>
+
+<ParamField body="validations" type="object">
+  Override which validations to run (uses project defaults if not specified)
+
+  ```json
+  {
+    "syntax": true,
+    "disposable": true,
+    "mx": true,
+    "smtp": false,
+    "catchall": true,
+    "roleEmail": true,
+    "alias": true,
+    "deviceFingerprint": true,
+    "ipReputation": true
+  }
+  ```
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Whether the validation completed successfully
+</ResponseField>
+
+<ResponseField name="valid" type="boolean" required>
+  Overall validation result (true if email passed all enabled checks)
+</ResponseField>
+
+<ResponseField name="email" type="string" required>
+  The original email address submitted
+</ResponseField>
+
+<ResponseField name="normalized" type="string" required>
+  The normalized/lowercase version of the email
+</ResponseField>
+
+<ResponseField name="recommendation" type="string" required>
+  Final recommendation: `allow`, `flag`, or `block`
+
+  - **allow**: Email passed all checks, safe to proceed
+  - **flag**: Email has suspicious signals, review recommended
+  - **block**: Email failed critical checks, should be rejected
+</ResponseField>
+
+<ResponseField name="signals" type="object" required>
+  Individual validation check results
+
+  <Expandable title="Validation Signals">
+    <ResponseField name="syntax" type="object">
+      <Expandable title="Syntax Check">
+        <ResponseField name="valid" type="boolean">
+          Whether email has valid syntax
+        </ResponseField>
+        <ResponseField name="action" type="string">
+          Configured action: `allow`, `flag`, or `block`
+        </ResponseField>
+        <ResponseField name="message" type="string">
+          Human-readable result message
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="disposable" type="object">
+      <Expandable title="Disposable Check">
+        <ResponseField name="valid" type="boolean">
+          false if email is from disposable domain
+        </ResponseField>
+        <ResponseField name="action" type="string">
+          Configured action
+        </ResponseField>
+        <ResponseField name="domain" type="string">
+          The disposable domain detected (if applicable)
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="mx" type="object">
+      <Expandable title="MX Records Check">
+        <ResponseField name="valid" type="boolean">
+          Whether domain has valid MX records
+        </ResponseField>
+        <ResponseField name="action" type="string">
+          Configured action
+        </ResponseField>
+        <ResponseField name="records" type="array">
+          Array of MX record hostnames
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="smtp" type="object">
+      <Expandable title="SMTP Check">
+        <ResponseField name="valid" type="boolean">
+          Whether mailbox exists (if check is enabled)
+        </ResponseField>
+        <ResponseField name="action" type="string">
+          Configured action
+        </ResponseField>
+        <ResponseField name="response" type="string">
+          SMTP server response
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="catchall" type="object">
+      <Expandable title="Catch-all Check">
+        <ResponseField name="valid" type="boolean">
+          false if domain is catch-all
+        </ResponseField>
+        <ResponseField name="action" type="string">
+          Configured action
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="roleEmail" type="object">
+      <Expandable title="Role Email Check">
+        <ResponseField name="valid" type="boolean">
+          false if email is role-based (admin@, support@, etc.)
+        </ResponseField>
+        <ResponseField name="action" type="string">
+          Configured action
+        </ResponseField>
+        <ResponseField name="role" type="string">
+          The role detected (e.g., "admin", "support")
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="alias" type="object">
+      <Expandable title="Alias Check">
+        <ResponseField name="valid" type="boolean">
+          false if plus-addressing detected
+        </ResponseField>
+        <ResponseField name="action" type="string">
+          Configured action
+        </ResponseField>
+        <ResponseField name="baseEmail" type="string">
+          Email without alias (e.g., user@domain.com from user+tag@domain.com)
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="deviceFingerprint" type="object">
+      <Expandable title="Device Fingerprint Check">
+        <ResponseField name="valid" type="boolean">
+          Device fingerprint validation result
+        </ResponseField>
+        <ResponseField name="action" type="string">
+          Configured action
+        </ResponseField>
+        <ResponseField name="deviceId" type="string">
+          Unique device identifier
+        </ResponseField>
+        <ResponseField name="previousEmails" type="number">
+          Number of other emails validated from this device
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="ipReputation" type="object">
+      <Expandable title="IP Reputation Check">
+        <ResponseField name="valid" type="boolean">
+          false if IP is VPN/Tor/fraudulent
+        </ResponseField>
+        <ResponseField name="action" type="string">
+          Configured action
+        </ResponseField>
+        <ResponseField name="threats" type="array">
+          Array of threats detected: `vpn`, `tor`, `proxy`, `datacenter`, `fraud`
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Additional context about the validation
+
+  <Expandable title="Metadata Fields">
+    <ResponseField name="deviceId" type="string">
+      Unique device fingerprint hash
+    </ResponseField>
+    <ResponseField name="ipAddress" type="string">
+      IP address of the request
+    </ResponseField>
+    <ResponseField name="country" type="string">
+      Country code (e.g., "US")
+    </ResponseField>
+    <ResponseField name="city" type="string">
+      City name (if available)
+    </ResponseField>
+    <ResponseField name="timestamp" type="number">
+      Unix timestamp of validation
+    </ResponseField>
+    <ResponseField name="processingTime" type="number">
+      Validation processing time in milliseconds
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://api.vouch.expert/validate \
+  -H "Authorization: Bearer your_api_key" \
+  -H "X-Project-Id: your_project_id" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "fingerprint": {
+      "visitorId": "abc123",
+      "confidence": 0.95
+    }
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.vouch.expert/validate', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer your_api_key',
+    'X-Project-Id': 'your_project_id',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    email: 'user@example.com',
+    fingerprint: {
+      visitorId: 'abc123',
+      confidence: 0.95
+    }
+  })
+});
+
+const result = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.vouch.expert/validate',
+    headers={
+        'Authorization': 'Bearer your_api_key',
+        'X-Project-Id': 'your_project_id',
+        'Content-Type': 'application/json'
+    },
+    json={
+        'email': 'user@example.com',
+        'fingerprint': {
+            'visitorId': 'abc123',
+            'confidence': 0.95
+        }
+    }
+)
+
+result = response.json()
+```
+
+```go Go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "net/http"
+)
+
+func main() {
+    payload := map[string]interface{}{
+        "email": "user@example.com",
+        "fingerprint": map[string]interface{}{
+            "visitorId": "abc123",
+            "confidence": 0.95,
+        },
+    }
+
+    jsonData, _ := json.Marshal(payload)
+
+    req, _ := http.NewRequest("POST", "https://api.vouch.expert/validate", bytes.NewBuffer(jsonData))
+    req.Header.Set("Authorization", "Bearer your_api_key")
+    req.Header.Set("X-Project-Id", "your_project_id")
+    req.Header.Set("Content-Type", "application/json")
+
+    client := &http.Client{}
+    resp, _ := client.Do(req)
+    defer resp.Body.Close()
+}
+```
+</CodeGroup>
+
+## Example Response
+
+```json
+{
+  "success": true,
+  "valid": true,
+  "email": "user@example.com",
+  "normalized": "user@example.com",
+  "recommendation": "allow",
+  "signals": {
+    "syntax": {
+      "valid": true,
+      "action": "allow",
+      "message": "Email format is valid"
+    },
+    "disposable": {
+      "valid": true,
+      "action": "allow",
+      "message": "Not a disposable email"
+    },
+    "mx": {
+      "valid": true,
+      "action": "allow",
+      "records": ["mx1.example.com", "mx2.example.com"],
+      "message": "MX records found"
+    },
+    "smtp": {
+      "valid": true,
+      "action": "allow",
+      "response": "250 OK",
+      "message": "Mailbox exists"
+    },
+    "catchall": {
+      "valid": false,
+      "action": "flag",
+      "message": "Domain accepts all emails"
+    },
+    "roleEmail": {
+      "valid": true,
+      "action": "allow",
+      "message": "Not a role email"
+    },
+    "alias": {
+      "valid": true,
+      "action": "allow",
+      "message": "No alias detected"
+    },
+    "deviceFingerprint": {
+      "valid": true,
+      "action": "allow",
+      "deviceId": "fp_1234567890abcdef",
+      "previousEmails": 0,
+      "message": "New device"
+    },
+    "ipReputation": {
+      "valid": true,
+      "action": "allow",
+      "threats": [],
+      "message": "Clean IP"
+    }
+  },
+  "metadata": {
+    "deviceId": "fp_1234567890abcdef",
+    "ipAddress": "192.168.1.1",
+    "country": "US",
+    "city": "San Francisco",
+    "timestamp": 1699564800000,
+    "processingTime": 234
+  }
+}
+```
+
+## Error Responses
+
+<ResponseExample>
+```json 400 - Invalid Request
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_EMAIL",
+    "message": "Email address is required"
+  }
+}
+```
+
+```json 401 - Unauthorized
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid API key"
+  }
+}
+```
+
+```json 402 - Quota Exceeded
+{
+  "success": false,
+  "error": {
+    "code": "QUOTA_EXCEEDED",
+    "message": "Monthly validation quota exceeded",
+    "quota": {
+      "limit": 10000,
+      "used": 10000,
+      "remaining": 0
+    }
+  }
+}
+```
+
+```json 429 - Rate Limited
+{
+  "success": false,
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Too many requests",
+    "retryAfter": 3600
+  }
+}
+```
+
+```json 500 - Server Error
+{
+  "success": false,
+  "error": {
+    "code": "INTERNAL_ERROR",
+    "message": "An internal error occurred"
+  }
+}
+```
+</ResponseExample>
+
+## Rate Limits
+
+| Key Type | Rate Limit | Window |
+|----------|------------|--------|
+| Client Key | 1,000 requests | Per hour |
+| Server Key | 5,000 requests | Per hour |
+
+<Warning>
+  Rate limits are per project. If you exceed the limit, you'll receive a 429 error with a `retryAfter` value in seconds.
+</Warning>
+
+## Quota Management
+
+Each plan includes a monthly validation quota. Track your usage in the dashboard or via the response headers:
+
+```
+X-Quota-Limit: 10000
+X-Quota-Used: 2345
+X-Quota-Remaining: 7655
+X-Quota-Reset: 2024-01-01T00:00:00Z
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use the Right API Key" icon="key">
+    - **Client keys** for browser/mobile apps (includes automatic fingerprinting)
+    - **Server keys** for backend validation (can override IP/User-Agent)
+    - Never expose server keys in client-side code
+  </Accordion>
+
+  <Accordion title="Handle Recommendations Appropriately" icon="shield">
+    - **block**: Reject the signup immediately
+    - **flag**: Allow signup but mark for review, or require additional verification
+    - **allow**: Proceed normally
+  </Accordion>
+
+  <Accordion title="Cache Results When Appropriate" icon="database">
+    - Cache validation results for repeated validations of the same email
+    - Set TTL based on your use case (e.g., 24 hours)
+    - Invalidate cache if user changes email
+  </Accordion>
+
+  <Accordion title="Provide Good User Experience" icon="user">
+    - Show specific error messages (e.g., "Please use a permanent email address")
+    - Don't expose internal validation details to users
+    - Consider allowing flagged emails with additional verification
+  </Accordion>
+
+  <Accordion title="Monitor Your Quota" icon="chart-line">
+    - Set up alerts when approaching quota limits
+    - Upgrade plan before hitting limits
+    - Use test keys during development
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Validation Types" icon="shield" href="/validation/overview">
+    Learn about each validation check
+  </Card>
+
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle errors gracefully
+  </Card>
+
+  <Card title="Use SDKs" icon="box" href="/sdks/javascript">
+    Use our SDKs for easier integration
+  </Card>
+
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Production optimization tips
+  </Card>
+</CardGroup>

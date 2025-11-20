@@ -1,0 +1,459 @@
+---
+title: 'Error Codes'
+description: 'Complete reference for Vouch API error codes'
+---
+
+## Error Response Format
+
+All Vouch API errors follow a consistent format:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error message",
+    "details": {} // Optional additional context
+  }
+}
+```
+
+## HTTP Status Codes
+
+| Status | Meaning | When It Occurs |
+|--------|---------|----------------|
+| 400 | Bad Request | Invalid request parameters |
+| 401 | Unauthorized | Invalid or missing API key |
+| 403 | Forbidden | API key lacks permission |
+| 402 | Payment Required | Quota exceeded |
+| 429 | Too Many Requests | Rate limit exceeded |
+| 500 | Internal Server Error | Server error |
+
+## Error Codes Reference
+
+### Authentication Errors (401)
+
+<ResponseExample>
+```json UNAUTHORIZED
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid API key"
+  }
+}
+```
+</ResponseExample>
+
+**Cause:** API key is invalid, expired, or malformed
+
+**Solution:**
+- Verify your API key is correct
+- Check you're using the right environment (test vs live)
+- Regenerate key if compromised
+
+---
+
+<ResponseExample>
+```json INVALID_KEY_TYPE
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_KEY_TYPE",
+    "message": "Server keys cannot be used in browsers"
+  }
+}
+```
+</ResponseExample>
+
+**Cause:** Attempting to use server key from browser
+
+**Solution:** Use client key for browser/mobile applications
+
+---
+
+### Request Errors (400)
+
+<ResponseExample>
+```json INVALID_EMAIL
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_EMAIL",
+    "message": "Email address is required"
+  }
+}
+```
+</ResponseExample>
+
+**Cause:** Email parameter missing or empty
+
+**Solution:** Include valid email in request body
+
+---
+
+<ResponseExample>
+```json INVALID_REQUEST
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "Request body must be valid JSON"
+  }
+}
+```
+</ResponseExample>
+
+**Cause:** Malformed JSON in request body
+
+**Solution:** Ensure request body is valid JSON
+
+---
+
+<ResponseExample>
+```json MISSING_PROJECT_ID
+{
+  "success": false,
+  "error": {
+    "code": "MISSING_PROJECT_ID",
+    "message": "X-Project-Id header is required"
+  }
+}
+```
+</ResponseExample>
+
+**Cause:** Missing X-Project-Id header
+
+**Solution:** Include X-Project-Id header in all requests
+
+---
+
+### Permission Errors (403)
+
+<ResponseExample>
+```json DOMAIN_NOT_ALLOWED
+{
+  "success": false,
+  "error": {
+    "code": "DOMAIN_NOT_ALLOWED",
+    "message": "Origin 'https://example.com' not in allowed domains"
+  }
+}
+```
+</ResponseExample>
+
+**Cause:** Client key used from unauthorized domain
+
+**Solution:** Add domain to allowed list in dashboard
+
+---
+
+<ResponseExample>
+```json PROJECT_NOT_FOUND
+{
+  "success": false,
+  "error": {
+    "code": "PROJECT_NOT_FOUND",
+    "message": "Project not found or API key lacks access"
+  }
+}
+```
+</ResponseExample>
+
+**Cause:** Project ID invalid or API key doesn't have access
+
+**Solution:** Verify project ID and API key match
+
+---
+
+### Quota Errors (402)
+
+<ResponseExample>
+```json QUOTA_EXCEEDED
+{
+  "success": false,
+  "error": {
+    "code": "QUOTA_EXCEEDED",
+    "message": "Monthly validation quota exceeded",
+    "details": {
+      "limit": 10000,
+      "used": 10000,
+      "remaining": 0,
+      "resetAt": "2024-02-01T00:00:00Z"
+    }
+  }
+}
+```
+</ResponseExample>
+
+**Cause:** Monthly validation quota exhausted
+
+**Solution:**
+- Upgrade your plan
+- Wait for quota reset (1st of month)
+- Contact support for quota increase
+
+---
+
+### Rate Limit Errors (429)
+
+<ResponseExample>
+```json RATE_LIMITED
+{
+  "success": false,
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Too many requests. Please try again later.",
+    "details": {
+      "limit": 5000,
+      "window": "1 hour",
+      "retryAfter": 3600
+    }
+  }
+}
+```
+</ResponseExample>
+
+**Cause:** Exceeded hourly rate limit
+
+**Solution:**
+- Implement exponential backoff
+- Respect `retryAfter` value (seconds)
+- Use server keys for higher limits (5,000/hr vs 1,000/hr)
+
+---
+
+### Server Errors (500)
+
+<ResponseExample>
+```json INTERNAL_ERROR
+{
+  "success": false,
+  "error": {
+    "code": "INTERNAL_ERROR",
+    "message": "An internal error occurred. Please try again."
+  }
+}
+```
+</ResponseExample>
+
+**Cause:** Unexpected server error
+
+**Solution:**
+- Retry with exponential backoff
+- Contact support if persistent
+
+---
+
+## Handling Errors
+
+### Recommended Error Handling Pattern
+
+<Tabs>
+  <Tab title="JavaScript">
+    ```javascript
+    try {
+      const result = await vouch.validate(email);
+
+      if (!result.success) {
+        switch (result.error.code) {
+          case 'UNAUTHORIZED':
+            console.error('Invalid API key');
+            break;
+
+          case 'QUOTA_EXCEEDED':
+            console.error('Quota exceeded. Upgrade plan.');
+            break;
+
+          case 'RATE_LIMITED':
+            // Retry after specified time
+            const retryAfter = result.error.details.retryAfter;
+            await sleep(retryAfter * 1000);
+            return await vouch.validate(email);
+
+          case 'DOMAIN_NOT_ALLOWED':
+            console.error('Add domain to allowed list');
+            break;
+
+          default:
+            console.error('Unknown error:', result.error);
+        }
+      }
+    } catch (error) {
+      console.error('Request failed:', error);
+    }
+    ```
+  </Tab>
+
+  <Tab title="Python">
+    ```python
+    from vouch import Vouch, VouchError
+
+    try:
+        result = vouch.validate(email)
+    except VouchError as e:
+        if e.code == 'UNAUTHORIZED':
+            print('Invalid API key')
+        elif e.code == 'QUOTA_EXCEEDED':
+            print(f'Quota exceeded. Resets at {e.details["resetAt"]}')
+        elif e.code == 'RATE_LIMITED':
+            retry_after = e.details['retryAfter']
+            time.sleep(retry_after)
+            result = vouch.validate(email)
+        else:
+            print(f'Error: {e.message}')
+    ```
+  </Tab>
+
+  <Tab title="Go">
+    ```go
+    result, err := vouch.Validate(email)
+    if err != nil {
+        switch vErr := err.(type) {
+        case *vouch.APIError:
+            switch vErr.Code {
+            case "UNAUTHORIZED":
+                log.Println("Invalid API key")
+            case "QUOTA_EXCEEDED":
+                log.Printf("Quota exceeded. Resets: %s", vErr.Details["resetAt"])
+            case "RATE_LIMITED":
+                retryAfter := vErr.Details["retryAfter"].(int)
+                time.Sleep(time.Duration(retryAfter) * time.Second)
+                return vouch.Validate(email)
+            default:
+                log.Printf("Error: %s", vErr.Message)
+            }
+        default:
+            log.Printf("Request failed: %v", err)
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Retry Logic
+
+Implement exponential backoff for rate limits and server errors:
+
+```javascript
+async function validateWithRetry(email, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const result = await vouch.validate(email);
+
+      if (!result.success && result.error.code === 'RATE_LIMITED') {
+        const retryAfter = result.error.details?.retryAfter || Math.pow(2, i) * 1000;
+        await sleep(retryAfter);
+        continue;
+      }
+
+      return result;
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      await sleep(Math.pow(2, i) * 1000);
+    }
+  }
+}
+```
+
+## Monitoring Errors
+
+### Response Headers
+
+Check these headers to monitor quota and rate limits:
+
+```
+X-Quota-Limit: 10000
+X-Quota-Used: 2345
+X-Quota-Remaining: 7655
+X-RateLimit-Limit: 5000
+X-RateLimit-Remaining: 4876
+X-RateLimit-Reset: 1699564800
+```
+
+### Logging Recommendations
+
+Log errors with context for debugging:
+
+```javascript
+console.error('Validation failed', {
+  email: email,
+  errorCode: result.error.code,
+  errorMessage: result.error.message,
+  projectId: projectId,
+  timestamp: new Date().toISOString()
+});
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always check success field" icon="check">
+    ```javascript
+    const result = await vouch.validate(email);
+
+    if (!result.success) {
+      // Handle error
+      console.error(result.error);
+      return;
+    }
+
+    // Process successful result
+    ```
+  </Accordion>
+
+  <Accordion title="Implement retry logic for transient errors" icon="rotate">
+    Retry on:
+    - `RATE_LIMITED` (with exponential backoff)
+    - `INTERNAL_ERROR` (max 3 retries)
+
+    Don't retry on:
+    - `UNAUTHORIZED` (fix API key)
+    - `QUOTA_EXCEEDED` (upgrade plan)
+    - `INVALID_EMAIL` (invalid input)
+  </Accordion>
+
+  <Accordion title="Show user-friendly messages" icon="message">
+    Don't expose internal error codes to users:
+
+    ```javascript
+    // Good
+    if (error.code === 'INVALID_EMAIL') {
+      showError('Please enter a valid email address');
+    }
+
+    // Bad
+    showError(`Error: ${error.code} - ${error.message}`);
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor quota proactively" icon="chart-line">
+    Set up alerts when quota reaches 80%:
+
+    ```javascript
+    if (quotaUsed / quotaLimit > 0.8) {
+      alertAdmins('Vouch quota at 80%. Consider upgrading.');
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Error Handling Guide" icon="shield" href="/guides/error-handling">
+    Comprehensive error handling strategies
+  </Card>
+
+  <Card title="Rate Limits" icon="gauge" href="/guides/rate-limits">
+    Understanding and managing rate limits
+  </Card>
+
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Production deployment tips
+  </Card>
+
+  <Card title="Dashboard" icon="chart-line" href="https://vouch.expert">
+    Monitor quota and usage
+  </Card>
+</CardGroup>

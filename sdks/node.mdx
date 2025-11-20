@@ -1,0 +1,149 @@
+---
+title: 'Node.js SDK'
+description: 'Server-side email validation for Node.js applications'
+---
+
+## Overview
+
+The Vouch Node.js SDK enables server-side email validation with higher rate limits and no domain restrictions. Perfect for backend APIs, serverless functions, and batch processing.
+
+<Note>
+  **Package:** `@vouch/node`
+  **Node Version:** 14+ required
+  **TypeScript:** Full type definitions included
+</Note>
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install @vouch/node
+```
+
+```bash yarn
+yarn add @vouch/node
+```
+
+```bash pnpm
+pnpm add @vouch/node
+```
+</CodeGroup>
+
+## Quick Start
+
+```javascript
+import { Vouch } from '@vouch/node';
+
+// Initialize with server API key
+const vouch = new Vouch(
+  process.env.VOUCH_PROJECT_ID,
+  process.env.VOUCH_SERVER_KEY
+);
+
+// Validate an email
+const result = await vouch.validate('user@example.com');
+
+if (result.recommendation === 'block') {
+  throw new Error('Invalid email address');
+}
+```
+
+## Express.js Integration
+
+```javascript
+import express from 'express';
+import { Vouch } from '@vouch/node';
+
+const app = express();
+const vouch = new Vouch(PROJECT_ID, SERVER_KEY);
+
+app.post('/api/signup', async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const result = await vouch.validate(email, {
+      ip: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    if (result.recommendation === 'block') {
+      return res.status(400).json({
+        error: 'Email address cannot be used'
+      });
+    }
+
+    // Create user
+    const user = await createUser(email);
+
+    res.json({ success: true, user });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+```
+
+## Serverless Functions
+
+### AWS Lambda
+
+```javascript
+import { Vouch } from '@vouch/node';
+
+const vouch = new Vouch(
+  process.env.VOUCH_PROJECT_ID,
+  process.env.VOUCH_SERVER_KEY
+);
+
+export const handler = async (event) => {
+  const { email } = JSON.parse(event.body);
+
+  const result = await vouch.validate(email);
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify(result)
+  };
+};
+```
+
+### Vercel
+
+```javascript
+import { Vouch } from '@vouch/node';
+
+const vouch = new Vouch(
+  process.env.VOUCH_PROJECT_ID,
+  process.env.VOUCH_SERVER_KEY
+);
+
+export default async function handler(req, res) {
+  const { email } = req.body;
+
+  const result = await vouch.validate(email);
+
+  res.status(200).json(result);
+}
+```
+
+## Server vs Client Keys
+
+<Warning>
+  Always use **server keys** on the backend. Never expose server keys in client-side code!
+</Warning>
+
+**Server Key Benefits:**
+- No domain restrictions
+- Higher rate limits (5,000/hour vs 1,000/hour)
+- Can override IP and User-Agent
+- Full access to all features
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Next.js SDK" icon="N" href="/sdks/nextjs">
+    Next.js integration
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/validate">
+    Complete API docs
+  </Card>
+</CardGroup>

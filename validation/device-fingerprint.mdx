@@ -1,0 +1,571 @@
+---
+title: 'Device Fingerprinting'
+description: 'Advanced fraud detection through device tracking'
+---
+
+## Overview
+
+Device fingerprinting creates a unique identifier for each device accessing your application, allowing you to track the same device across multiple signups, detect multi-accounting, and identify sophisticated fraud patterns.
+
+<Note>
+  Vouch uses **FingerprintJS Pro** technology for 99.5% device identification accuracy. Fingerprints are automatically collected by client SDKs.
+</Note>
+
+## How It Works
+
+Device fingerprinting analyzes hundreds of browser and device signals to create a unique identifier:
+
+<CardGroup cols={2}>
+  <Card title="Browser Signals" icon="browser">
+    User agent, screen resolution, timezone, language, fonts
+  </Card>
+  <Card title="Canvas Fingerprinting" icon="image">
+    Renders hidden canvas to detect GPU and rendering differences
+  </Card>
+  <Card title="WebGL Fingerprinting" icon="cube">
+    3D graphics capabilities and vendor information
+  </Card>
+  <Card title="Audio Fingerprinting" icon="volume">
+    Audio context oscillator patterns unique to device
+  </Card>
+  <Card title="Hardware Signals" icon="microchip">
+    CPU cores, memory, touch support, battery status
+  </Card>
+  <Card title="Network Signals" icon="wifi">
+    Connection type, bandwidth estimate, IP address
+  </Card>
+</CardGroup>
+
+## The Fingerprinting Process
+
+<Steps>
+  <Step title="Signal Collection">
+    Client SDK collects 100+ browser and device signals
+  </Step>
+  <Step title="Fingerprint Generation">
+    Signals are hashed into a unique device identifier
+  </Step>
+  <Step title="Server Validation">
+    Fingerprint sent with validation request
+  </Step>
+  <Step title="History Check">
+    Check if device has validated other emails
+  </Step>
+  <Step title="Risk Assessment">
+    Analyze patterns: velocity, diversity, suspicious behavior
+  </Step>
+  <Step title="Action Recommendation">
+    Return allow, flag, or block based on device history
+  </Step>
+</Steps>
+
+## Automatic Collection
+
+Device fingerprints are automatically collected by Vouch client SDKs:
+
+<Tabs>
+  <Tab title="JavaScript">
+    ```javascript
+    import { Vouch } from '@vouch/js';
+
+    const vouch = new Vouch(projectId, apiKey);
+
+    // Fingerprint collected automatically
+    const result = await vouch.validate('user@example.com');
+
+    console.log(result.metadata.deviceId); // fp_abc123...
+    console.log(result.signals.deviceFingerprint.previousEmails); // 0, 1, 2, etc.
+    ```
+  </Tab>
+
+  <Tab title="React">
+    ```jsx
+    import { VouchProvider, useValidateEmail } from '@vouch/react';
+
+    function SignupForm() {
+      const { validate, result } = useValidateEmail();
+
+      const handleSubmit = async (email) => {
+        // Fingerprint collected automatically
+        await validate(email);
+
+        if (result.signals.deviceFingerprint.previousEmails > 5) {
+          alert('Too many accounts from this device');
+        }
+      };
+    }
+    ```
+  </Tab>
+
+  <Tab title="iOS">
+    ```swift
+    import VouchSDK
+
+    let vouch = Vouch(projectId: projectId, apiKey: apiKey)
+
+    // Fingerprint collected automatically
+    let result = try await vouch.validate(email)
+
+    print("Device ID: \(result.metadata.deviceId)")
+    print("Previous emails: \(result.signals.deviceFingerprint.previousEmails)")
+    ```
+  </Tab>
+
+  <Tab title="Android">
+    ```kotlin
+    import com.vouch.sdk.Vouch
+
+    val vouch = Vouch(context, projectId, apiKey)
+
+    // Fingerprint collected automatically
+    val result = vouch.validate(email)
+
+    Log.d("DeviceId", result.metadata.deviceId)
+    Log.d("Previous", result.signals.deviceFingerprint.previousEmails.toString())
+    ```
+  </Tab>
+</Tabs>
+
+## Validation Response
+
+### New Device
+
+```json
+{
+  "deviceFingerprint": {
+    "valid": true,
+    "action": "flag",
+    "message": "New device",
+    "deviceId": "fp_1234567890abcdef",
+    "confidence": 0.995,
+    "previousEmails": 0,
+    "firstSeen": "2024-01-15T10:30:00Z",
+    "isIncognito": false,
+    "isBotLikely": false
+  }
+}
+```
+
+### Returning Device (Low Risk)
+
+```json
+{
+  "deviceFingerprint": {
+    "valid": true,
+    "action": "allow",
+    "message": "Returning device",
+    "deviceId": "fp_1234567890abcdef",
+    "confidence": 0.998,
+    "previousEmails": 2,
+    "firstSeen": "2024-01-10T08:00:00Z",
+    "lastSeen": "2024-01-14T15:30:00Z",
+    "emailVelocity": "low"
+  }
+}
+```
+
+### High-Risk Device
+
+```json
+{
+  "deviceFingerprint": {
+    "valid": false,
+    "action": "block",
+    "message": "High-risk device pattern detected",
+    "deviceId": "fp_1234567890abcdef",
+    "confidence": 0.992,
+    "previousEmails": 25,
+    "firstSeen": "2024-01-15T09:00:00Z",
+    "lastSeen": "2024-01-15T10:30:00Z",
+    "emailVelocity": "very_high",
+    "riskFactors": [
+      "RAPID_ACCOUNT_CREATION",
+      "HIGH_VOLUME_DEVICE",
+      "SUSPICIOUS_VELOCITY"
+    ]
+  }
+}
+```
+
+## Risk Signals
+
+### Email Velocity
+
+How many emails validated from this device over time:
+
+| Velocity | Previous Emails | Timeframe | Risk Level |
+|----------|----------------|-----------|------------|
+| Very Low | 0-1 | Any | Low |
+| Low | 2-5 | > 1 week | Low |
+| Medium | 6-10 | > 1 week | Medium |
+| High | 11-20 | < 1 week | High |
+| Very High | 20+ | < 1 day | Critical |
+
+### Risk Factors
+
+<AccordionGroup>
+  <Accordion title="RAPID_ACCOUNT_CREATION" icon="gauge-high">
+    Multiple emails validated in a short time period.
+
+    **Threshold:** 5+ emails in 1 hour
+    **Indicates:** Automated bot, referral abuse, multi-accounting
+  </Accordion>
+
+  <Accordion title="HIGH_VOLUME_DEVICE" icon="chart-line">
+    Device has validated many emails total.
+
+    **Threshold:** 20+ total emails
+    **Indicates:** Account farming, professional fraudster
+  </Accordion>
+
+  <Accordion title="SUSPICIOUS_VELOCITY" icon="clock">
+    Unusual pattern of account creation.
+
+    **Example:** 10 accounts in 5 minutes, then stops
+    **Indicates:** Scripted automation, trial abuse
+  </Accordion>
+
+  <Accordion title="INCOGNITO_MODE" icon="eye-slash">
+    User in private/incognito browsing mode.
+
+    **Risk:** Medium (can be legitimate privacy concern)
+    **Indicates:** May want to hide identity or avoid tracking
+  </Accordion>
+
+  <Accordion title="BOT_LIKELY" icon="robot">
+    Device exhibits bot-like characteristics.
+
+    **Signals:** No mouse movement, perfect timing, missing sensors
+    **Indicates:** Automated script, headless browser
+  </Accordion>
+
+  <Accordion title="TAMPERED_FINGERPRINT" icon="screwdriver-wrench">
+    Signs of fingerprint spoofing or manipulation.
+
+    **Signals:** Inconsistent signals, known spoofing tools
+    **Indicates:** Sophisticated fraud attempt
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Features
+
+### Fingerprint Confidence
+
+Confidence score (0-1) indicates how unique and stable the fingerprint is:
+
+- **0.99+**: Extremely high confidence (ideal)
+- **0.95-0.99**: High confidence (good)
+- **0.90-0.95**: Medium confidence (acceptable)
+- **< 0.90**: Low confidence (flagged)
+
+Low confidence may indicate:
+- Privacy browsers (Brave, Tor)
+- Missing browser APIs
+- Fingerprint spoofing tools
+- Very common device configuration
+
+### Incognito Detection
+
+Vouch can detect private/incognito browsing modes:
+
+```json
+{
+  "deviceFingerprint": {
+    "isIncognito": true,
+    "incognitoConfidence": 0.92,
+    "incognitoSignals": [
+      "FILE_SYSTEM_DISABLED",
+      "STORAGE_QUOTA_LOW",
+      "MISSING_CACHE"
+    ]
+  }
+}
+```
+
+### Bot Detection
+
+Identifies automated browsers and scripts:
+
+```json
+{
+  "deviceFingerprint": {
+    "isBotLikely": true,
+    "botConfidence": 0.88,
+    "botSignals": [
+      "NO_MOUSE_MOVEMENT",
+      "HEADLESS_BROWSER",
+      "SELENIUM_DETECTED",
+      "PERFECT_TIMING"
+    ]
+  }
+}
+```
+
+## Configuration
+
+### Recommended Settings
+
+<Tabs>
+  <Tab title="FLAG (Balanced)">
+    Track all devices, flag suspicious patterns:
+
+    ```json
+    {
+      "deviceFingerprint": {
+        "action": "flag",
+        "thresholds": {
+          "previousEmailsWarning": 5,
+          "previousEmailsBlock": 20,
+          "velocityWindow": 3600,
+          "maxPerHour": 10
+        },
+        "detectIncognito": true,
+        "detectBots": true
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="BLOCK (Strict)">
+    Automatically block high-risk devices:
+
+    ```json
+    {
+      "deviceFingerprint": {
+        "action": "block",
+        "thresholds": {
+          "previousEmailsBlock": 10,
+          "velocityWindow": 1800,
+          "maxPerHour": 5
+        },
+        "blockIncognito": false,
+        "blockBots": true,
+        "requireHighConfidence": true
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="ALLOW (Permissive)">
+    Collect data only:
+
+    ```json
+    {
+      "deviceFingerprint": {
+        "action": "allow",
+        "trackOnly": true,
+        "detectIncognito": false,
+        "detectBots": false
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Referral Fraud" icon="link">
+    Detect users creating multiple accounts to abuse referral programs
+  </Card>
+  <Card title="Trial Abuse" icon="calendar">
+    Prevent users from creating new trials from the same device
+  </Card>
+  <Card title="Vote Manipulation" icon="check-to-slot">
+    Stop users from voting multiple times on the same device
+  </Card>
+  <Card title="Promo Abuse" icon="ticket">
+    Prevent multiple redemptions of one-time promotional codes
+  </Card>
+  <Card title="Account Farming" icon="users">
+    Identify professional fraud operations creating many accounts
+  </Card>
+  <Card title="Bot Detection" icon="robot">
+    Block automated account creation and spam
+  </Card>
+</CardGroup>
+
+## Analytics
+
+Track device patterns in your dashboard:
+
+- **Unique devices:** Total unique devices that validated emails
+- **Device reuse rate:** Percentage of devices used for multiple emails
+- **Average emails per device:** Distribution of account creation
+- **Velocity patterns:** Timeline of account creation by device
+- **Risk distribution:** How many devices are flagged as risky
+
+## Privacy Considerations
+
+<AccordionGroup>
+  <Accordion title="GDPR Compliance" icon="scale-balanced">
+    Device fingerprints are hashed and anonymized. They cannot be reverse-engineered to identify a specific person without correlation to other data.
+
+    **Best practices:**
+    - Disclose fingerprinting in privacy policy
+    - Allow users to request deletion
+    - Don't share fingerprints with third parties
+  </Accordion>
+
+  <Accordion title="User Transparency" icon="eye">
+    Consider informing users about device tracking:
+
+    ```jsx
+    <p className="text-sm text-gray-600">
+      We use device fingerprinting to prevent fraud and abuse.
+      Learn more in our <Link to="/privacy">Privacy Policy</Link>.
+    </p>
+    ```
+  </Accordion>
+
+  <Accordion title="Data Retention" icon="clock">
+    Configure how long device fingerprints are stored:
+
+    - **30 days**: Short-term fraud prevention
+    - **90 days**: Medium-term patterns
+    - **1 year**: Long-term analysis (default)
+    - **Forever**: Maximum historical data
+  </Accordion>
+</AccordionGroup>
+
+## Testing
+
+<CodeGroup>
+```javascript Check Device History
+const result = await vouch.validate('user@example.com');
+
+const device = result.signals.deviceFingerprint;
+
+console.log(`Device ID: ${device.deviceId}`);
+console.log(`Previous emails: ${device.previousEmails}`);
+console.log(`Confidence: ${device.confidence}`);
+console.log(`Is incognito: ${device.isIncognito}`);
+console.log(`Is bot: ${device.isBotLikely}`);
+
+if (device.previousEmails > 10) {
+  console.log('⚠️ High-volume device detected');
+}
+```
+
+```javascript Simulate Multi-Accounting
+// Validate multiple emails from same browser
+const emails = [
+  'user1@gmail.com',
+  'user2@yahoo.com',
+  'user3@outlook.com'
+];
+
+for (const email of emails) {
+  const result = await vouch.validate(email);
+  console.log(`${email}: ${result.signals.deviceFingerprint.previousEmails} previous`);
+}
+
+// Each subsequent validation will show increasing previousEmails count
+```
+</CodeGroup>
+
+## Integration Examples
+
+### React Hook
+
+```jsx
+import { useValidateEmail } from '@vouch/react';
+
+function SignupForm() {
+  const { validate, result } = useValidateEmail();
+
+  const handleSubmit = async (email) => {
+    await validate(email);
+
+    const device = result.signals.deviceFingerprint;
+
+    if (device.previousEmails > 5) {
+      // Require additional verification
+      setRequirePhoneVerification(true);
+    }
+
+    if (device.isBotLikely) {
+      // Show CAPTCHA
+      setCaptchaRequired(true);
+    }
+
+    if (device.riskFactors?.includes('RAPID_ACCOUNT_CREATION')) {
+      // Block immediately
+      setError('Too many accounts created. Please contact support.');
+      return;
+    }
+  };
+}
+```
+
+### Server-Side
+
+```javascript
+// Server-side API route
+app.post('/api/signup', async (req, res) => {
+  const { email, fingerprint } = req.body;
+
+  const result = await vouch.validate(email, {
+    fingerprint: fingerprint
+  });
+
+  const device = result.signals.deviceFingerprint;
+
+  // Log suspicious activity
+  if (device.previousEmails > 10) {
+    await analytics.track('suspicious_device', {
+      deviceId: device.deviceId,
+      previousEmails: device.previousEmails,
+      riskFactors: device.riskFactors
+    });
+  }
+
+  // Apply rate limiting
+  if (device.emailVelocity === 'very_high') {
+    return res.status(429).json({
+      error: 'Too many requests from this device'
+    });
+  }
+});
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Use Client SDKs" icon="code">
+    Client SDKs automatically collect accurate fingerprints. Don't try to implement fingerprinting manually.
+  </Accordion>
+
+  <Accordion title="Combine with Other Signals" icon="puzzle-piece">
+    Device fingerprinting is most powerful when combined with IP reputation, email validation, and behavioral signals.
+  </Accordion>
+
+  <Accordion title="Set Appropriate Thresholds" icon="sliders">
+    Start with permissive thresholds and tighten based on your fraud patterns. Different applications have different normal usage patterns.
+  </Accordion>
+
+  <Accordion title="Don't Block Incognito Users" icon="eye-slash">
+    Many legitimate users browse in incognito mode. Flag for review instead of auto-blocking.
+  </Accordion>
+
+  <Accordion title="Review False Positives" icon="magnifying-glass">
+    Regularly review flagged devices to tune your thresholds and avoid blocking legitimate users.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="IP Reputation" icon="shield-halved" href="/validation/ip-reputation">
+    Combine device tracking with IP analysis
+  </Card>
+  <Card title="JavaScript SDK" icon="js" href="/sdks/javascript">
+    Implement fingerprinting in your app
+  </Card>
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Optimize fraud detection
+  </Card>
+  <Card title="Validation Overview" icon="shield" href="/validation/overview">
+    Back to validation overview
+  </Card>
+</CardGroup>

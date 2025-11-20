@@ -1,0 +1,136 @@
+---
+title: 'Remix SDK'
+description: 'Email validation for Remix applications'
+---
+
+## Overview
+
+The Vouch Remix SDK provides seamless integration with Remix's action/loader pattern for both client and server-side email validation.
+
+<Note>
+  **Package:** `@vouch/remix`
+  **Remix Version:** 1.0+
+  **TypeScript:** Full type definitions included
+</Note>
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install @vouch/remix
+```
+
+```bash yarn
+yarn add @vouch/remix
+```
+
+```bash pnpm
+pnpm add @vouch/remix
+```
+</CodeGroup>
+
+## Server-Side Validation
+
+### Action Handler
+
+```typescript
+// app/routes/signup.tsx
+import { json, type ActionArgs } from '@remix-run/node';
+import { Vouch } from '@vouch/remix';
+
+const vouch = new Vouch(
+  process.env.VOUCH_PROJECT_ID!,
+  process.env.VOUCH_SERVER_KEY!
+);
+
+export async function action({ request }: ActionArgs) {
+  const formData = await request.formData();
+  const email = formData.get('email') as string;
+
+  const result = await vouch.validate(email, {
+    ip: request.headers.get('x-forwarded-for') || 'unknown',
+    userAgent: request.headers.get('user-agent') || 'unknown'
+  });
+
+  if (result.recommendation === 'block') {
+    return json({
+      error: 'This email address cannot be used'
+    }, { status: 400 });
+  }
+
+  // Create user
+  const user = await createUser(email);
+
+  return json({ user });
+}
+```
+
+### Client Component
+
+```tsx
+import { Form, useActionData, useNavigation } from '@remix-run/react';
+
+export default function SignupRoute() {
+  const actionData = useActionData<typeof action>();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === 'submitting';
+
+  return (
+    <Form method="post">
+      <input type="email" name="email" required />
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? 'Validating...' : 'Sign Up'}
+      </button>
+
+      {actionData?.error && (
+        <p className="error">{actionData.error}</p>
+      )}
+    </Form>
+  );
+}
+```
+
+## Client-Side Validation
+
+```tsx
+import { VouchProvider, useValidateEmail } from '@vouch/remix/client';
+
+export default function SignupPage() {
+  return (
+    <VouchProvider
+      projectId={ENV.VOUCH_PROJECT_ID}
+      apiKey={ENV.VOUCH_CLIENT_KEY}
+    >
+      <SignupForm />
+    </VouchProvider>
+  );
+}
+
+function SignupForm() {
+  const { validate, loading } = useValidateEmail();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const email = e.target.email.value;
+
+    const result = await validate(email);
+
+    if (result.recommendation === 'allow') {
+      e.target.submit();
+    }
+  };
+
+  return <Form onSubmit={handleSubmit}>...</Form>;
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Node.js SDK" icon="node" href="/sdks/node">
+    Server-side SDK
+  </Card>
+  <Card title="React SDK" icon="react" href="/sdks/react">
+    React hooks
+  </Card>
+</CardGroup>

@@ -1,0 +1,642 @@
+---
+title: 'IP Reputation'
+description: 'Detect VPNs, proxies, Tor, and fraudulent IP addresses'
+---
+
+## Overview
+
+IP reputation checking analyzes the IP address of validation requests to detect VPNs, proxy servers, Tor networks, data centers, and known fraudulent sources. This helps identify users trying to hide their true location or engage in fraudulent activity.
+
+<Note>
+  Typically configured as **FLAG** since many legitimate users use VPNs for privacy. Combine with other signals for best results.
+</Note>
+
+## What We Detect
+
+<CardGroup cols={2}>
+  <Card title="VPN Services" icon="shield">
+    Commercial VPN providers like NordVPN, ExpressVPN, etc.
+  </Card>
+  <Card title="Tor Network" icon="user-secret">
+    Tor exit nodes used for anonymous browsing
+  </Card>
+  <Card title="Proxy Servers" icon="server">
+    Public and private proxy services
+  </Card>
+  <Card title="Data Centers" icon="building">
+    Cloud provider IPs (AWS, Google Cloud, Azure, etc.)
+  </Card>
+  <Card title="Known Fraud" icon="triangle-exclamation">
+    IPs associated with previous fraud attempts
+  </Card>
+  <Card title="Hosting IPs" icon="network-wired">
+    Web hosting and colocation facilities
+  </Card>
+</CardGroup>
+
+## How It Works
+
+<Steps>
+  <Step title="IP Extraction">
+    Extract user's IP address from request headers or client connection
+  </Step>
+  <Step title="Database Lookup">
+    Check IP against threat intelligence databases
+  </Step>
+  <Step title="ISP Analysis">
+    Identify if ISP is a VPN/proxy/hosting provider
+  </Step>
+  <Step title="Geolocation">
+    Verify geographic location and detect anomalies
+  </Step>
+  <Step title="Reputation Check">
+    Check historical fraud associations
+  </Step>
+  <Step title="Risk Scoring">
+    Aggregate signals into threat assessment
+  </Step>
+</Steps>
+
+## Validation Response
+
+### Clean Residential IP
+
+```json
+{
+  "ipReputation": {
+    "valid": true,
+    "action": "flag",
+    "message": "Clean residential IP",
+    "ipAddress": "203.0.113.45",
+    "threats": [],
+    "type": "residential",
+    "isp": "Comcast Cable",
+    "country": "US",
+    "city": "San Francisco",
+    "risk": "low"
+  }
+}
+```
+
+### VPN Detected
+
+```json
+{
+  "ipReputation": {
+    "valid": false,
+    "action": "flag",
+    "message": "VPN service detected",
+    "ipAddress": "198.51.100.78",
+    "threats": ["vpn"],
+    "type": "vpn",
+    "isp": "NordVPN",
+    "vpnProvider": "NordVPN",
+    "country": "NL",
+    "city": "Amsterdam",
+    "risk": "medium"
+  }
+}
+```
+
+### Tor Exit Node
+
+```json
+{
+  "ipReputation": {
+    "valid": false,
+    "action": "block",
+    "message": "Tor exit node detected",
+    "ipAddress": "192.0.2.156",
+    "threats": ["tor", "anonymizer"],
+    "type": "tor",
+    "country": "DE",
+    "risk": "high",
+    "exitNode": true
+  }
+}
+```
+
+### Data Center IP
+
+```json
+{
+  "ipReputation": {
+    "valid": false,
+    "action": "flag",
+    "message": "Data center IP detected",
+    "ipAddress": "203.0.113.200",
+    "threats": ["datacenter"],
+    "type": "hosting",
+    "isp": "Amazon Web Services",
+    "cloudProvider": "AWS",
+    "country": "US",
+    "region": "us-east-1",
+    "risk": "medium"
+  }
+}
+```
+
+### Known Fraud IP
+
+```json
+{
+  "ipReputation": {
+    "valid": false,
+    "action": "block",
+    "message": "Known fraudulent IP",
+    "ipAddress": "198.51.100.99",
+    "threats": ["fraud", "vpn", "datacenter"],
+    "type": "fraud",
+    "fraudScore": 95,
+    "recentIncidents": 47,
+    "firstSeen": "2024-01-01T00:00:00Z",
+    "lastIncident": "2024-01-15T08:30:00Z",
+    "risk": "critical"
+  }
+}
+```
+
+## Threat Types
+
+### VPN Services
+
+Commercial VPN providers used to hide real location:
+
+<AccordionGroup>
+  <Accordion title="Popular VPN Providers" icon="shield">
+    - NordVPN
+    - ExpressVPN
+    - Surfshark
+    - Private Internet Access
+    - ProtonVPN
+    - CyberGhost
+    - IPVanish
+    - Mullvad
+
+    **Risk Level:** Medium
+    **Legitimate uses:** Privacy, accessing geo-restricted content
+    **Fraudulent uses:** Hiding location, bypassing restrictions
+  </Accordion>
+</AccordionGroup>
+
+### Tor Network
+
+The Onion Router - anonymous communication network:
+
+**How it works:**
+- Traffic routed through multiple nodes
+- Each layer encrypted
+- Exit node IP visible to destination
+
+**Risk Level:** High
+**Legitimate uses:** Privacy, censorship circumvention, whistleblowing
+**Fraudulent uses:** Anonymous fraud, dark web activities
+
+### Proxy Servers
+
+Intermediary servers that forward requests:
+
+<Tabs>
+  <Tab title="Public Proxies">
+    Free proxy lists available online. Often slow and unreliable.
+
+    **Risk:** Medium-High
+    **Common sources:** HideMyAss, ProxyNova
+  </Tab>
+
+  <Tab title="Private Proxies">
+    Paid proxy services for businesses or individuals.
+
+    **Risk:** Medium
+    **Common sources:** Luminati, Smartproxy, Oxylabs
+  </Tab>
+
+  <Tab title="Web Proxies">
+    Browser-based proxy services.
+
+    **Risk:** Medium
+    **Common sources:** Hide.me, KProxy
+  </Tab>
+</Tabs>
+
+### Data Center IPs
+
+IPs from cloud providers and hosting facilities:
+
+| Provider | Risk Level | Common Use |
+|----------|-----------|------------|
+| AWS | Medium | Cloud hosting, servers |
+| Google Cloud | Medium | Apps, services |
+| Azure | Medium | Enterprise hosting |
+| DigitalOcean | Medium | VPS, droplets |
+| Linode | Medium | VPS hosting |
+| OVH | Medium-High | VPS, dedicated servers |
+| Hetzner | Medium | Hosting, VPS |
+
+**Why they're flagged:**
+- Not residential/mobile IPs
+- Often used for bots and automation
+- Can indicate server-side scripts
+- Higher fraud association
+
+**Legitimate uses:**
+- Corporate VPNs
+- Remote development
+- Testing environments
+
+### Hosting Providers
+
+Web hosting and colocation facilities:
+
+- Shared hosting (GoDaddy, Bluehost)
+- Dedicated servers
+- Colocation facilities
+- Web hosting resellers
+
+**Risk:** Medium
+
+## Geographic Analysis
+
+### IP Geolocation
+
+Every IP includes geographic data:
+
+```json
+{
+  "ipReputation": {
+    "ipAddress": "203.0.113.45",
+    "country": "US",
+    "countryName": "United States",
+    "region": "CA",
+    "regionName": "California",
+    "city": "San Francisco",
+    "zipCode": "94102",
+    "latitude": 37.7749,
+    "longitude": -122.4194,
+    "timezone": "America/Los_Angeles",
+    "isp": "Comcast Cable",
+    "organization": "Comcast Cable Communications"
+  }
+}
+```
+
+### Location Mismatches
+
+Detect when IP location doesn't match expected patterns:
+
+```json
+{
+  "ipReputation": {
+    "locationMismatch": true,
+    "declaredLocation": "US",
+    "actualLocation": "RU",
+    "mismatchReason": "COUNTRY_MISMATCH",
+    "risk": "high"
+  }
+}
+```
+
+### Impossible Travel
+
+Detect same device from different locations in short time:
+
+```json
+{
+  "ipReputation": {
+    "impossibleTravel": true,
+    "previousLocation": {
+      "country": "US",
+      "city": "New York",
+      "timestamp": "2024-01-15T10:00:00Z"
+    },
+    "currentLocation": {
+      "country": "JP",
+      "city": "Tokyo",
+      "timestamp": "2024-01-15T10:30:00Z"
+    },
+    "distance": 10850,
+    "timeDelta": 1800,
+    "possibleSpeed": 21700,
+    "risk": "critical"
+  }
+}
+```
+
+## Fraud Scoring
+
+IPs receive a fraud score (0-100):
+
+| Score | Risk Level | Recommendation |
+|-------|-----------|----------------|
+| 0-25 | Low | Allow |
+| 26-50 | Medium | Allow with monitoring |
+| 51-75 | High | Flag for review |
+| 76-90 | Very High | Require additional verification |
+| 91-100 | Critical | Block |
+
+### Fraud Score Factors
+
+<AccordionGroup>
+  <Accordion title="Historical Activity" icon="clock">
+    - Previous fraud attempts from this IP
+    - Number of recent incidents
+    - Severity of past fraud
+    - Time since last incident
+  </Accordion>
+
+  <Accordion title="IP Characteristics" icon="network-wired">
+    - IP type (residential, hosting, vpn)
+    - ISP reputation
+    - Country risk level
+    - WHOIS information
+  </Accordion>
+
+  <Accordion title="Behavioral Signals" icon="chart-line">
+    - Request patterns
+    - Velocity of requests
+    - User agent consistency
+    - Session characteristics
+  </Accordion>
+
+  <Accordion title="Threat Intelligence" icon="shield-halved">
+    - Blacklist presence
+    - Botnet participation
+    - Malware distribution
+    - Spam activity
+  </Accordion>
+</AccordionGroup>
+
+## Configuration
+
+### Recommended Settings
+
+<Tabs>
+  <Tab title="FLAG (Balanced)">
+    Track all threats, flag suspicious IPs:
+
+    ```json
+    {
+      "ipReputation": {
+        "action": "flag",
+        "threats": {
+          "vpn": "flag",
+          "tor": "block",
+          "proxy": "flag",
+          "datacenter": "flag",
+          "fraud": "block"
+        },
+        "fraudScoreThreshold": 75,
+        "checkImpossibleTravel": true
+      }
+    }
+    ```
+
+    **Best for:** Most applications
+  </Tab>
+
+  <Tab title="BLOCK (Strict)">
+    Block all anonymizing services:
+
+    ```json
+    {
+      "ipReputation": {
+        "action": "block",
+        "threats": {
+          "vpn": "block",
+          "tor": "block",
+          "proxy": "block",
+          "datacenter": "block",
+          "fraud": "block"
+        },
+        "fraudScoreThreshold": 50,
+        "allowCorporateVpns": true
+      }
+    }
+    ```
+
+    **Best for:** Financial services, high-value transactions
+  </Tab>
+
+  <Tab title="ALLOW (Permissive)">
+    Track only, minimal blocking:
+
+    ```json
+    {
+      "ipReputation": {
+        "action": "allow",
+        "threats": {
+          "vpn": "allow",
+          "tor": "flag",
+          "proxy": "allow",
+          "datacenter": "allow",
+          "fraud": "block"
+        },
+        "fraudScoreThreshold": 90
+      }
+    }
+    ```
+
+    **Best for:** Developer tools, privacy-focused apps
+  </Tab>
+</Tabs>
+
+### Threat-Specific Actions
+
+Configure different actions per threat type:
+
+```json
+{
+  "ipReputation": {
+    "threats": {
+      "vpn": "flag",           // Privacy users
+      "tor": "block",          // High risk
+      "proxy": "flag",         // Moderate risk
+      "datacenter": "allow",   // Could be legit (corporate)
+      "fraud": "block",        // Always block
+      "hosting": "flag"        // Web scraping, bots
+    }
+  }
+}
+```
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Geographic Restrictions" icon="globe">
+    Enforce regional availability or licensing restrictions
+  </Card>
+  <Card title="Fraud Prevention" icon="shield-halved">
+    Block known fraudulent IP ranges
+  </Card>
+  <Card title="Bot Detection" icon="robot">
+    Identify automated scripts from data centers
+  </Card>
+  <Card title="Account Takeover" icon="user-lock">
+    Detect login attempts from unusual locations
+  </Card>
+  <Card title="Compliance" icon="scale-balanced">
+    Meet regulatory requirements for user verification
+  </Card>
+  <Card title="Multi-Accounting" icon="users">
+    Detect users hiding identity with VPNs
+  </Card>
+</CardGroup>
+
+## User Experience
+
+### Handling VPN Users
+
+Many legitimate users use VPNs for privacy:
+
+```jsx
+{result.signals.ipReputation.threats.includes('vpn') && (
+  <Alert variant="warning">
+    <p>We detected you're using a VPN.</p>
+    <p className="text-sm">
+      For security, we may require additional verification.
+      Please disable your VPN or verify your identity.
+    </p>
+    <Button onClick={requirePhoneVerification}>
+      Verify via SMS
+    </Button>
+  </Alert>
+)}
+```
+
+### Tor Blocking
+
+Tor users expect blocks on many sites:
+
+```jsx
+{result.signals.ipReputation.threats.includes('tor') && (
+  <Alert variant="error">
+    <p>Tor network detected.</p>
+    <p className="text-sm">
+      For security reasons, we cannot accept signups from Tor.
+      Please use a standard internet connection.
+    </p>
+  </Alert>
+)}
+```
+
+## Testing
+
+<CodeGroup>
+```javascript Check IP Reputation
+const result = await vouch.validate('user@example.com');
+
+const ip = result.signals.ipReputation;
+
+console.log(`IP: ${ip.ipAddress}`);
+console.log(`Country: ${ip.country}`);
+console.log(`ISP: ${ip.isp}`);
+console.log(`Threats: ${ip.threats.join(', ')}`);
+console.log(`Risk: ${ip.risk}`);
+
+if (ip.threats.includes('vpn')) {
+  console.log('VPN detected');
+}
+
+if (ip.fraudScore > 75) {
+  console.log('⚠️ High fraud risk');
+}
+```
+
+```javascript Server-Side IP Override
+// Override IP for server-side validation
+const result = await vouch.validate('user@example.com', {
+  ip: request.headers['x-forwarded-for'] || request.ip
+});
+
+console.log(`Validating from IP: ${result.metadata.ipAddress}`);
+```
+</CodeGroup>
+
+## Analytics
+
+Track IP patterns in your dashboard:
+
+- **Threat distribution:** Percentage by threat type
+- **Geographic distribution:** Signups by country
+- **VPN usage rate:** How many users use VPNs
+- **Fraud trends:** Changes in fraudulent IP activity over time
+- **ISP analysis:** Most common internet providers
+
+## Privacy & Compliance
+
+<AccordionGroup>
+  <Accordion title="IP Data Retention" icon="database">
+    Configure how long IP addresses are stored:
+
+    - **30 days:** Minimum for fraud detection
+    - **90 days:** Standard retention
+    - **1 year:** Extended analysis (default)
+    - **Anonymize:** Hash IPs after 30 days
+  </Accordion>
+
+  <Accordion title="GDPR Compliance" icon="scale-balanced">
+    IP addresses are personal data under GDPR:
+
+    - Disclose collection in privacy policy
+    - Allow users to request deletion
+    - Provide legitimate interest justification
+    - Implement data retention limits
+  </Accordion>
+
+  <Accordion title="VPN Allowlisting" icon="list">
+    Allow specific VPN providers for corporate use:
+
+    ```json
+    {
+      "ipReputation": {
+        "allowedVpnProviders": [
+          "Cisco AnyConnect",
+          "Palo Alto Networks GlobalProtect",
+          "Zscaler"
+        ]
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Don't Auto-Block VPNs" icon="shield">
+    Many legitimate users value privacy. Use FLAG and combine with other signals before blocking.
+  </Accordion>
+
+  <Accordion title="Block Tor for High-Risk Actions" icon="user-secret">
+    While Tor is used legitimately, it's reasonable to block it for financial transactions or high-value actions.
+  </Accordion>
+
+  <Accordion title="Allow Corporate IPs" icon="building">
+    Employees accessing from corporate networks may appear as data center IPs. Don't auto-block.
+  </Accordion>
+
+  <Accordion title="Combine Signals" icon="puzzle-piece">
+    IP reputation is most powerful when combined with device fingerprinting and email validation.
+  </Accordion>
+
+  <Accordion title="Monitor False Positives" icon="magnifying-glass">
+    Review flagged IPs regularly to ensure you're not blocking legitimate users.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Device Fingerprinting" icon="fingerprint" href="/validation/device-fingerprint">
+    Combine IP with device tracking
+  </Card>
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Optimize fraud detection
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/validate">
+    See full validation API
+  </Card>
+  <Card title="Validation Overview" icon="shield" href="/validation/overview">
+    Back to validation overview
+  </Card>
+</CardGroup>

@@ -1,33 +1,213 @@
 ---
-title: 'Introduction'
-description: 'Example section for showcasing API endpoints'
+title: 'API Overview'
+description: 'Introduction to the Vouch API'
 ---
 
-<Note>
-  If you're not looking to build API reference documentation, you can delete
-  this section by removing the api-reference folder.
-</Note>
+## Welcome to the Vouch API
 
-## Welcome
+The Vouch API provides real-time email validation and fraud detection through a simple REST API. Built on Cloudflare Workers, our API delivers sub-second response times from 275+ global data centers.
 
-There are two ways to build API documentation: [OpenAPI](https://mintlify.com/docs/api-playground/openapi/setup) and [MDX components](https://mintlify.com/docs/api-playground/mdx/configuration). For the starter kit, we are using the following OpenAPI specification.
-
-<Card
-  title="Plant Store Endpoints"
-  icon="leaf"
-  href="https://github.com/mintlify/starter/blob/main/api-reference/openapi.json"
->
-  View the OpenAPI specification file
+<Card title="Base URL" icon="link">
+  ```
+  https://api.vouch.expert
+  ```
 </Card>
+
+## Quick Example
+
+```bash
+curl -X POST https://api.vouch.expert/validate \
+  -H "Authorization: Bearer your_api_key" \
+  -H "X-Project-Id: your_project_id" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com"}'
+```
+
+## API Versioning
+
+Vouch supports both versioned and unversioned endpoints:
+
+- **Latest** (recommended): `/validate` - Always uses the current stable version
+- **Versioned**: `/v1/validate` - Locked to API version 1
+
+<Tip>
+  We recommend using the latest endpoint for new integrations. Versioned endpoints are available for backward compatibility.
+</Tip>
 
 ## Authentication
 
-All API endpoints are authenticated using Bearer tokens and picked up from the specification file.
+All API requests require authentication via API keys:
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token with your API key
+  ```
+  Authorization: Bearer your_api_key_here
+  ```
+</ParamField>
+
+<ParamField header="X-Project-Id" type="string" required>
+  Your project ID
+  ```
+  X-Project-Id: your_project_id
+  ```
+</ParamField>
+
+### API Key Types
+
+<CardGroup cols={2}>
+  <Card title="Client Keys" icon="browser">
+    **For browser and mobile apps**
+    - Restricted to allowed domains
+    - 1,000 requests/hour
+    - Safe to expose publicly
+    - Includes device fingerprinting
+  </Card>
+
+  <Card title="Server Keys" icon="server">
+    **For backend services**
+    - No domain restrictions
+    - 5,000 requests/hour
+    - Must be kept secret
+    - Can override IP/User-Agent
+  </Card>
+</CardGroup>
+
+<Warning>
+  Server keys are automatically blocked when used from browsers to prevent accidental exposure.
+</Warning>
+
+## Rate Limiting
+
+| Key Type | Limit | Window |
+|----------|-------|--------|
+| Client Key | 1,000 requests | Per hour |
+| Server Key | 5,000 requests | Per hour |
+
+Rate limits are tracked per project. Exceeding the limit returns a `429 Too Many Requests` response with a `retryAfter` header.
+
+## Quota Management
+
+Each subscription includes a monthly validation quota. Monitor your usage via response headers:
+
+```
+X-Quota-Limit: 10000
+X-Quota-Used: 2345
+X-Quota-Remaining: 7655
+X-Quota-Reset: 2024-01-01T00:00:00Z
+```
+
+When quota is exceeded, you'll receive a `402 Payment Required` response.
+
+## Endpoints
+
+<CardGroup cols={2}>
+  <Card title="POST /validate" icon="shield-check" href="/api-reference/validate">
+    Validate an email address with fraud detection
+  </Card>
+
+  <Card title="GET /analytics/devices" icon="mobile" href="/api-reference/analytics-devices">
+    Get device type distribution statistics
+  </Card>
+
+  <Card title="GET /analytics/countries" icon="globe" href="/api-reference/analytics-countries">
+    Get geographic distribution of validations
+  </Card>
+
+  <Card title="GET /analytics/threats" icon="triangle-exclamation" href="/api-reference/analytics-threats">
+    Get threat signal statistics
+  </Card>
+
+  <Card title="POST /webhook" icon="webhook" href="/api-reference/webhook">
+    Receive validation event notifications
+  </Card>
+</CardGroup>
+
+## Response Format
+
+All API responses follow a consistent structure:
+
+### Success Response
 
 ```json
-"security": [
-  {
-    "bearerAuth": []
-  }
-]
+{
+  "success": true,
+  "data": { ... }
+}
 ```
+
+### Error Response
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error message"
+  }
+}
+```
+
+## Error Codes
+
+| Code | Status | Description |
+|------|--------|-------------|
+| `INVALID_EMAIL` | 400 | Email address is required or invalid format |
+| `INVALID_REQUEST` | 400 | Request body is malformed |
+| `UNAUTHORIZED` | 401 | Invalid or missing API key |
+| `FORBIDDEN` | 403 | API key doesn't have access to project |
+| `QUOTA_EXCEEDED` | 402 | Monthly validation quota exceeded |
+| `RATE_LIMITED` | 429 | Too many requests |
+| `INTERNAL_ERROR` | 500 | Server error (contact support) |
+
+<Card title="Complete Error Reference" icon="book" href="/api-reference/errors">
+  View all error codes and handling strategies
+</Card>
+
+## SDKs
+
+We provide official SDKs for popular platforms:
+
+<CardGroup cols={3}>
+  <Card title="JavaScript" icon="js" href="/sdks/javascript" />
+  <Card title="React" icon="react" href="/sdks/react" />
+  <Card title="Node.js" icon="node" href="/sdks/node" />
+  <Card title="Next.js" icon="N" href="/sdks/nextjs" />
+  <Card title="iOS" icon="apple" href="/sdks/ios" />
+  <Card title="Android" icon="android" href="/sdks/android" />
+</CardGroup>
+
+## Support
+
+Need help with the API?
+
+<CardGroup cols={2}>
+  <Card title="Email Support" icon="envelope" href="mailto:support@vouch.expert">
+    support@vouch.expert
+  </Card>
+
+  <Card title="Dashboard" icon="gauge" href="https://vouch.expert">
+    Manage your projects and API keys
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Validate Endpoint" icon="code" href="/api-reference/validate">
+    Learn about the main validation endpoint
+  </Card>
+
+  <Card title="Authentication Guide" icon="key" href="/api-reference/authentication">
+    Deep dive into API authentication
+  </Card>
+
+  <Card title="Error Handling" icon="shield" href="/api-reference/errors">
+    Handle errors gracefully
+  </Card>
+
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get started in 5 minutes
+  </Card>
+</CardGroup>

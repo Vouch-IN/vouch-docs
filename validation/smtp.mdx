@@ -1,0 +1,104 @@
+---
+title: 'SMTP Verification'
+description: 'Verify mailbox existence without sending email'
+---
+
+## Overview
+
+SMTP (Simple Mail Transfer Protocol) verification checks if a specific email mailbox actually exists by connecting to the mail server and simulating the delivery process without sending an actual email. This is the most definitive way to verify email deliverability.
+
+<Warning>
+  SMTP verification is slower and less reliable than other checks. Many mail servers reject verification attempts. Recommended action: **FLAG** instead of **BLOCK**.
+</Warning>
+
+## How SMTP Verification Works
+
+SMTP verification simulates sending an email to verify the mailbox exists:
+
+<Steps>
+  <Step title="Connect to Mail Server">
+    Establish SMTP connection to domain's primary MX server
+  </Step>
+  <Step title="HELO Handshake">
+    Introduce ourselves to the mail server
+  </Step>
+  <Step title="MAIL FROM">
+    Specify sender address (uses a safe test address)
+  </Step>
+  <Step title="RCPT TO">
+    Attempt to send to the target email address
+  </Step>
+  <Step title="Analyze Response">
+    Parse SMTP response code to determine if mailbox exists
+  </Step>
+  <Step title="QUIT">
+    Close connection before actually sending data
+  </Step>
+</Steps>
+
+### SMTP Dialog Example
+
+```smtp
+Client: EHLO vouch.expert
+Server: 250-mx.example.com Hello vouch.expert
+Server: 250 SIZE 52428800
+
+Client: MAIL FROM:<verify@vouch.expert>
+Server: 250 OK
+
+Client: RCPT TO:<user@example.com>
+Server: 250 OK                     # Mailbox exists ✓
+# OR
+Server: 550 No such user           # Mailbox doesn't exist ✗
+
+Client: QUIT
+Server: 221 Bye
+```
+
+## Validation Response
+
+### Mailbox Exists
+
+```json
+{
+  "smtp": {
+    "valid": true,
+    "action": "flag",
+    "message": "Mailbox exists",
+    "responseCode": 250,
+    "responseText": "OK",
+    "server": "mx1.example.com"
+  }
+}
+```
+
+### Mailbox Doesn't Exist
+
+```json
+{
+  "smtp": {
+    "valid": false,
+    "action": "flag",
+    "message": "Mailbox does not exist",
+    "responseCode": 550,
+    "responseText": "5.1.1 No such user"
+  }
+}
+```
+
+## Configuration
+
+<Card title="FLAG" icon="flag" color="#f59e0b">
+  Configure SMTP verification to FLAG rather than BLOCK. Many legitimate emails cannot be verified due to server policies.
+</Card>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Catch-all Detection" icon="inbox" href="/validation/catchall">
+    Learn about catch-all domains
+  </Card>
+  <Card title="MX Records" icon="server" href="/validation/mx-records">
+    Back to MX verification
+  </Card>
+</CardGroup>

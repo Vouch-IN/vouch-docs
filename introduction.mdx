@@ -1,0 +1,142 @@
+---
+title: 'Welcome to Vouch'
+description: 'Real-time email validation and fraud detection API'
+---
+
+## What is Vouch?
+
+Vouch is a comprehensive email validation and fraud detection platform that helps you protect your application from fake accounts, disposable emails, and fraudulent signups. With 9 sophisticated validation checks and device fingerprinting technology, Vouch ensures only legitimate users access your platform.
+
+<CardGroup cols={2}>
+  <Card title="9 Validation Types" icon="shield-check">
+    From syntax validation to SMTP verification, catch every type of invalid or risky email
+  </Card>
+  <Card title="Device Fingerprinting" icon="fingerprint">
+    Track devices across multiple signups to detect fraud patterns
+  </Card>
+  <Card title="IP Reputation" icon="location-dot">
+    Identify VPNs, Tor networks, and known fraudulent IP addresses
+  </Card>
+  <Card title="Real-time Validation" icon="bolt">
+    Sub-second response times with smart parallel validation
+  </Card>
+</CardGroup>
+
+## Why Vouch?
+
+### Comprehensive Protection
+
+Vouch doesn't just check email syntax. We perform 9 different validation checks including:
+
+- **Syntax validation** - Ensure proper email format
+- **Disposable email detection** - Block temporary email services
+- **MX record verification** - Confirm domain has mail servers
+- **SMTP validation** - Verify the mailbox actually exists
+- **Catch-all detection** - Identify domains that accept all emails
+- **Role email detection** - Flag admin@, support@, etc.
+- **Alias detection** - Detect plus-addressing (user+tag@domain.com)
+- **Device fingerprinting** - Track device reuse across emails
+- **IP reputation** - Detect VPNs, proxies, and fraud
+
+### Edge-Powered Performance
+
+Built on Cloudflare Workers, Vouch delivers validation results in milliseconds from data centers worldwide. Our smart parallel validation architecture exits early on blocking checks while gathering comprehensive signals.
+
+### Developer-Friendly
+
+Get started in minutes with our SDKs for every platform:
+
+<CardGroup cols={3}>
+  <Card title="JavaScript" icon="js" href="/sdks/javascript">
+    Browser applications
+  </Card>
+  <Card title="React" icon="react" href="/sdks/react">
+    React with hooks
+  </Card>
+  <Card title="Node.js" icon="node" href="/sdks/node">
+    Server-side validation
+  </Card>
+  <Card title="Next.js" icon="N" href="/sdks/nextjs">
+    Next.js integration
+  </Card>
+  <Card title="iOS" icon="apple" href="/sdks/ios">
+    Swift SDK
+  </Card>
+  <Card title="Android" icon="android" href="/sdks/android">
+    Kotlin SDK
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Smart Validation Strategy
+
+Vouch uses an intelligent "early exit" strategy:
+- **BLOCK checks** use `Promise.race()` - returns on first failure
+- **FLAG checks** run to completion for maximum insight
+- Minimizes latency while maximizing data quality
+
+### Flexible Configuration
+
+Configure validation behavior per project:
+- Enable/disable individual validation checks
+- Set custom risk thresholds
+- Whitelist/blacklist domains
+- Customize recommendations
+
+### Rich Analytics
+
+Track validation metrics over time:
+- Device type distribution
+- Geographic patterns
+- Threat signal statistics
+- Usage trends
+
+### Enterprise-Ready
+
+- **Rate limiting** - 1,000/hr (client) or 5,000/hr (server)
+- **Quota management** - Subscription-based limits with grace periods
+- **Webhook notifications** - Real-time updates on validation events
+- **Team management** - Invite team members with role-based access
+
+## How It Works
+
+<Steps>
+  <Step title="Send email to /validate">
+    Include email address and optional device signals
+  </Step>
+  <Step title="Parallel validation">
+    9 validation checks run simultaneously with early-exit optimization
+  </Step>
+  <Step title="Risk scoring">
+    Aggregate signals into actionable recommendation
+  </Step>
+  <Step title="Get results">
+    Receive detailed validation results with recommendation: allow, flag, or block
+  </Step>
+</Steps>
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running in 5 minutes
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/introduction">
+    Explore the complete API
+  </Card>
+  <Card title="Choose Your SDK" icon="box" href="/sdks/javascript">
+    Browse SDKs for your platform
+  </Card>
+  <Card title="Dashboard" icon="gauge" href="https://vouch.expert">
+    Manage your projects
+  </Card>
+</CardGroup>
+
+## Pricing
+
+Start free with 1,000 validations per month. Upgrade as you grow with transparent, usage-based pricing.
+
+<Card title="View Pricing" icon="credit-card" href="https://vouch.expert/pricing">
+  See all plans and features
+</Card>
