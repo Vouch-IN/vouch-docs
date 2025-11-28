@@ -7,6 +7,9 @@
     "light": "#0060ff",
     "dark": "#0060ff"
   },
+  "fonts": {
+    "family": "Space Grotesk"
+  },
   "favicon": "/favicon.svg",
   "navigation": {
     "tabs": [
