@@ -107,10 +107,21 @@ The disposable email database is updated regularly:
 
 ```json
 {
-  "disposable": {
-    "valid": true,
-    "action": "block",
-    "message": "Not a disposable email"
+  "success": true,
+  "statusCode": 200,
+  "data": {
+    "checks": {
+      "disposable": {
+        "pass": true,
+        "latency": 15,
+        "metadata": {
+          "isDisposable": false
+        }
+      }
+    },
+    "deviceData": null,
+    "ipData": null,
+    "signals": []
   }
 }
 ```
@@ -119,16 +130,25 @@ The disposable email database is updated regularly:
 
 ```json
 {
-  "disposable": {
-    "valid": false,
-    "action": "block",
-    "domain": "mailinator.com",
-    "service": "Mailinator",
-    "message": "Disposable email service detected",
-    "details": {
-      "type": "temporary",
-      "confidence": "high"
-    }
+  "success": true,
+  "statusCode": 200,
+  "data": {
+    "checks": {
+      "disposable": {
+        "pass": false,
+        "latency": 15,
+        "metadata": {
+          "domain": "mailinator.com",
+          "service": "Mailinator",
+          "isDisposable": true,
+          "type": "temporary",
+          "confidence": "high"
+        }
+      }
+    },
+    "deviceData": null,
+    "ipData": null,
+    "signals": ["disposable_email"]
   }
 }
 ```
@@ -262,7 +282,7 @@ Provide clear, helpful error messages:
 
 <CodeGroup>
 ```jsx Good UX
-{result.signals.disposable.valid === false && (
+{result.success && result.data && !result.data.checks.disposable?.pass && (
   <Alert variant="error">
     <p>Please use a permanent email address.</p>
     <p className="text-sm">
@@ -274,8 +294,10 @@ Provide clear, helpful error messages:
 ```
 
 ```jsx Avoid This
-{result.signals.disposable.valid === false && (
-  <p>Error: Disposable email detected (mailinator.com)</p>
+{result.success && result.data && !result.data.checks.disposable?.pass && (
+  <p>Error: Disposable email detected (
+    {result.data.checks.disposable.metadata?.domain}
+  )</p>
 )}
 ```
 </CodeGroup>
@@ -285,7 +307,7 @@ Provide clear, helpful error messages:
 Offer alternatives for privacy-conscious users:
 
 ```jsx
-{result.signals.disposable.valid === false && (
+{result.success && result.data && !result.data.checks.disposable?.pass && (
   <Alert variant="warning">
     <p>Temporary email detected. We need a permanent address to:</p>
     <ul>
@@ -344,7 +366,8 @@ const disposableEmails = [
 
 for (const email of disposableEmails) {
   const result = await vouch.validate(email);
-  console.log(`${email}: disposable = ${!result.signals.disposable.valid}`);
+  const isDisposable = result.success && result.data && !result.data.checks.disposable?.pass;
+  console.log(`${email}: disposable = ${isDisposable}`);
   // All should be detected as disposable
 }
 ```
@@ -359,7 +382,8 @@ const legitimateEmails = [
 
 for (const email of legitimateEmails) {
   const result = await vouch.validate(email);
-  console.log(`${email}: disposable = ${!result.signals.disposable.valid}`);
+  const isDisposable = result.success && result.data && !result.data.checks.disposable?.pass;
+  console.log(`${email}: disposable = ${isDisposable}`);
   // None should be flagged as disposable
 }
 ```
@@ -396,25 +420,21 @@ If you need to allow specific domains:
 
 ### Checking Only Disposable
 
-You can validate only disposable status:
+Vouch automatically runs all enabled checks. You can check specific validation results:
 
 ```javascript
-const result = await vouch.validate('user@example.com', {
-  validations: {
-    syntax: true,
-    disposable: true,
-    mx: false,
-    smtp: false,
-    catchall: false,
-    roleEmail: false,
-    alias: false,
-    deviceFingerprint: false,
-    ipReputation: false
-  }
-});
+const result = await vouch.validate('user@example.com');
 
-if (!result.signals.disposable.valid) {
-  console.log('Disposable email detected!');
+if (result.success && result.data) {
+  const { checks } = result.data;
+
+  if (!checks.disposable?.pass) {
+    console.log('Disposable email detected!');
+    console.log('Domain:', checks.disposable.metadata?.domain);
+    console.log('Service:', checks.disposable.metadata?.service);
+  } else {
+    console.log('Email is not disposable');
+  }
 }
 ```
 

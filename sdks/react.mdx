@@ -66,8 +66,11 @@ function SignupForm() {
         {loading ? 'Validating...' : 'Sign Up'}
       </button>
 
-      {result?.recommendation === 'block' && (
-        <p className="error">This email cannot be used</p>
+      {result && !result.success && (
+        <p className="error">{result.error || 'This email cannot be used'}</p>
+      )}
+      {result?.data && !result.data.checks.disposable?.pass && (
+        <p className="error">Disposable emails are not allowed</p>
       )}
     </form>
   );
@@ -87,9 +90,14 @@ function App() {
       projectId={process.env.REACT_APP_VOUCH_PROJECT_ID}
       apiKey={process.env.REACT_APP_VOUCH_API_KEY}
       options={{
-        enableFingerprint: true,
-        debug: false,
-        timeout: 30000
+        endpoint: 'https://api.vouch.expert',
+        version: 'latest',
+        fingerprintOptions: {
+          enableCanvas: true,
+          enableWebGL: true,
+          enableAudio: true,
+          enableFonts: true
+        }
       }}
     >
       <YourApp />
@@ -109,7 +117,15 @@ function App() {
 </ParamField>
 
 <ParamField path="options" type="object">
-  Optional configuration (same as JavaScript SDK)
+  Optional configuration:
+
+  - `endpoint` - API endpoint URL (default: "https://api.vouch.expert")
+  - `version` - API version (default: "latest")
+  - `fingerprintOptions` - Fingerprint generation options
+    - `enableCanvas` - Enable canvas fingerprinting
+    - `enableWebGL` - Enable WebGL fingerprinting
+    - `enableAudio` - Enable audio fingerprinting
+    - `enableFonts` - Enable font fingerprinting
 </ParamField>
 
 ## useValidateEmail()
@@ -131,8 +147,15 @@ function SignupForm() {
   const handleValidate = async () => {
     const result = await validate('user@example.com');
 
-    if (result.recommendation === 'allow') {
-      // Proceed with signup
+    if (result.success && result.data) {
+      // Check validation results
+      const allChecksPassed = Object.values(result.data.checks).every(
+        check => check.pass
+      );
+
+      if (allChecksPassed) {
+        // Proceed with signup
+      }
     }
   };
 
@@ -156,7 +179,7 @@ function SignupForm() {
   Function to validate an email
 
   ```typescript
-  validate(email: string, options?: ValidationOptions): Promise<ValidationResult>
+  validate(email: string): Promise<ValidationResponse>
   ```
 </ResponseField>
 
@@ -164,8 +187,8 @@ function SignupForm() {
   Whether validation is in progress
 </ResponseField>
 
-<ResponseField name="result" type="ValidationResult | null">
-  Validation result (null if not yet validated)
+<ResponseField name="result" type="ValidationResponse | null">
+  Validation response (null if not yet validated). Contains `success`, `error`, `statusCode`, and `data` fields.
 </ResponseField>
 
 <ResponseField name="error" type="Error | null">
@@ -228,16 +251,27 @@ function SignupForm() {
     // Validate email first
     const validation = await validate(email);
 
-    if (validation.recommendation === 'block') {
-      alert('This email cannot be used');
+    if (!validation.success) {
+      alert(validation.error || 'Validation failed');
       return;
     }
 
-    if (validation.recommendation === 'flag') {
-      const proceed = confirm(
-        'This email has suspicious signals. Continue anyway?'
-      );
-      if (!proceed) return;
+    if (validation.data) {
+      const { checks, deviceData } = validation.data;
+
+      // Check critical validations
+      if (!checks.syntax?.pass || !checks.disposable?.pass) {
+        alert('This email cannot be used');
+        return;
+      }
+
+      // Check suspicious patterns
+      if (deviceData && deviceData.emailsUsed > 5) {
+        const proceed = confirm(
+          'This device has been used with multiple emails. Continue anyway?'
+        );
+        if (!proceed) return;
+      }
     }
 
     // Proceed with signup
@@ -254,7 +288,7 @@ function SignupForm() {
           onChange={(e) => setEmail(e.target.value)}
           required
         />
-        {result?.signals.disposable.valid === false && (
+        {result?.data && !result.data.checks.disposable?.pass && (
           <p className="warning">Disposable email detected</p>
         )}
       </div>
@@ -310,23 +344,32 @@ function EmailInput() {
       {loading && <Spinner />}
 
       {result && (
-        <ValidationIndicator recommendation={result.recommendation} />
+        <ValidationIndicator result={result} />
       )}
     </div>
   );
 }
 
-function ValidationIndicator({ recommendation }) {
-  if (recommendation === 'allow') {
-    return <span className="valid">✓ Valid email</span>;
-  }
+function ValidationIndicator({ result }) {
+  if (!result) return null;
 
-  if (recommendation === 'flag') {
-    return <span className="warning">⚠ Suspicious email</span>;
-  }
-
-  if (recommendation === 'block') {
+  if (!result.success) {
     return <span className="error">✗ Invalid email</span>;
+  }
+
+  if (result.data) {
+    const { checks } = result.data;
+    const allPassed = Object.values(checks).every(check => check.pass);
+
+    if (allPassed) {
+      return <span className="valid">✓ Valid email</span>;
+    }
+
+    if (!checks.syntax?.pass || !checks.disposable?.pass) {
+      return <span className="error">✗ Invalid email</span>;
+    }
+
+    return <span className="warning">⚠ Suspicious email</span>;
   }
 
   return null;
@@ -337,7 +380,7 @@ function ValidationIndicator({ recommendation }) {
 
 ```tsx
 import { useState } from 'react';
-import { useValidateEmail, ValidationResult } from '@vouch/react';
+import { useValidateEmail, ValidationResponse } from '@vouch/react';
 
 function SignupForm() {
   const [email, setEmail] = useState<string>('');
@@ -349,10 +392,15 @@ function SignupForm() {
   } = useValidateEmail();
 
   const handleValidate = async (): Promise<void> => {
-    const validation: ValidationResult = await validate(email);
+    const validation: ValidationResponse = await validate(email);
 
-    if (validation.recommendation === 'block') {
-      console.log('Email blocked');
+    if (!validation.success) {
+      console.log('Validation failed:', validation.error);
+      return;
+    }
+
+    if (validation.data && !validation.data.checks.disposable?.pass) {
+      console.log('Disposable email detected');
     }
   };
 
@@ -442,9 +490,15 @@ export default function SignupPage() {
     const handleSubmit = async (email) => {
       const result = await validate(email);
 
-      if (result.recommendation === 'allow') {
-        await createAccount(email);
-        reset(); // Clear state
+      if (result.success && result.data) {
+        const allChecksPassed = Object.values(result.data.checks).every(
+          check => check.pass
+        );
+
+        if (allChecksPassed) {
+          await createAccount(email);
+          reset(); // Clear state
+        }
       }
     };
     ```

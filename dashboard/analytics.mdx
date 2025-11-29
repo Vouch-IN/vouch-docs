@@ -576,12 +576,13 @@ Filter Set: "Disposable Emails"
       {
         "timestamp": "2024-01-20T14:32:15Z",
         "email": "user***@example.com",
-        "recommendation": "allow",
+        "success": true,
+        "statusCode": 200,
         "country": "US",
         "device": "desktop",
-        "validations": {
-          "disposable": { "valid": true },
-          "syntax": { "valid": true }
+        "checks": {
+          "syntax": { "pass": true, "latency": 2 },
+          "disposable": { "pass": true, "latency": 15 }
         }
       }
     ]

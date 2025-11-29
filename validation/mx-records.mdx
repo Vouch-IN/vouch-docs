@@ -317,7 +317,7 @@ Provide helpful guidance when MX validation fails:
 
 <CodeGroup>
 ```jsx Good UX
-{result.signals.mx.valid === false && (
+{result.data && !result.data.checks.mx?.pass && (
   <Alert variant="error">
     <p>This email domain cannot receive messages.</p>
     <p className="text-sm text-gray-600">
@@ -328,7 +328,7 @@ Provide helpful guidance when MX validation fails:
 ```
 
 ```jsx Domain-Specific Help
-{result.signals.mx.valid === false && (
+{result.data && !result.data.checks.mx?.pass && (
   <Alert variant="error">
     <p>We couldn't verify {domain}.</p>
     <p className="text-sm">
@@ -363,7 +363,7 @@ function suggestDomain(domain) {
 
 // Usage
 const domain = email.split('@')[1];
-if (!result.signals.mx.valid) {
+if (result.data && !result.data.checks.mx?.pass) {
   const suggestion = suggestDomain(domain);
   if (suggestion) {
     showError(`Did you mean ${email.replace(domain, suggestion)}?`);
@@ -387,8 +387,10 @@ const validDomains = [
 
 for (const email of validDomains) {
   const result = await vouch.validate(email);
-  console.log(`${email}: MX valid = ${result.signals.mx.valid}`);
-  console.log(`  Servers: ${result.signals.mx.records.join(', ')}`);
+  if (result.data) {
+    console.log(`${email}: MX valid = ${result.data.checks.mx?.pass}`);
+    console.log(`  Servers: ${result.data.checks.mx?.metadata?.records?.join(', ')}`);
+  }
 }
 ```
 
@@ -402,8 +404,10 @@ const invalidDomains = [
 
 for (const email of invalidDomains) {
   const result = await vouch.validate(email);
-  console.log(`${email}: MX valid = ${result.signals.mx.valid}`);
-  console.log(`  Reason: ${result.signals.mx.message}`);
+  if (result.data) {
+    console.log(`${email}: MX valid = ${result.data.checks.mx?.pass}`);
+    console.log(`  Reason: ${result.data.checks.mx?.error}`);
+  }
 }
 ```
 </CodeGroup>
@@ -425,15 +429,19 @@ MX verification works best when combined with other validations:
 // Typical validation flow
 const result = await vouch.validate(email);
 
-if (!result.signals.syntax.valid) {
+if (!result.success || !result.data) {
+  return "Validation failed";
+}
+
+if (!result.data.checks.syntax?.pass) {
   return "Invalid email format";
 }
 
-if (!result.signals.mx.valid) {
+if (!result.data.checks.mx?.pass) {
   return "Domain cannot receive email";
 }
 
-if (!result.signals.smtp.valid) {
+if (!result.data.checks.smtp?.pass) {
   return "Mailbox does not exist";
 }
 

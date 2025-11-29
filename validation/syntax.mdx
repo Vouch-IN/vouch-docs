@@ -297,7 +297,7 @@ Provide clear feedback when syntax validation fails:
 
 <CodeGroup>
 ```jsx Good UX
-{result.signals.syntax.valid === false && (
+{result.data && !result.data.checks.syntax?.pass && (
   <p className="error">
     Please enter a valid email address
   </p>
@@ -305,7 +305,7 @@ Provide clear feedback when syntax validation fails:
 ```
 
 ```jsx Avoid This
-{result.signals.syntax.valid === false && (
+{result.data && !result.data.checks.syntax?.pass && (
   <p className="error">
     Invalid email format: missing @ symbol (RFC 5322 violation)
   </p>
@@ -388,8 +388,10 @@ const validEmails = [
 
 for (const email of validEmails) {
   const result = await vouch.validate(email);
-  console.log(`${email}: ${result.signals.syntax.valid}`);
-  // Should all be true
+  if (result.data) {
+    console.log(`${email}: ${result.data.checks.syntax?.pass}`);
+    // Should all be true
+  }
 }
 ```
 
@@ -407,8 +409,10 @@ const invalidEmails = [
 
 for (const email of invalidEmails) {
   const result = await vouch.validate(email);
-  console.log(`${email}: ${result.signals.syntax.valid}`);
-  // Should all be false
+  if (result.data) {
+    console.log(`${email}: ${result.data.checks.syntax?.pass}`);
+    // Should all be false
+  }
 }
 ```
 </CodeGroup>

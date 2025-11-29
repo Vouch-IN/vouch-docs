@@ -521,15 +521,22 @@ async function validateWithFallback(email: string) {
     console.warn('Vouch validation failed, using fallback', error);
 
     // Fallback to basic validation
+    const isValid = isValidEmailFormat(email);
     return {
-      valid: isValidEmailFormat(email),
-      recommendation: isValidEmailFormat(email) ? 'flag' : 'block',
-      validations: {
-        syntax: {
-          valid: isValidEmailFormat(email),
-          message: 'Basic syntax check'
-        }
-      },
+      success: isValid,
+      statusCode: isValid ? 200 : 400,
+      error: isValid ? undefined : 'Email format is invalid',
+      data: isValid ? {
+        checks: {
+          syntax: {
+            pass: true,
+            latency: 0
+          }
+        },
+        deviceData: null,
+        ipData: null,
+        signals: ['fallback']
+      } : undefined,
       fallback: true
     };
   }

@@ -52,7 +52,12 @@ Use both client-side and server-side validation for optimal results:
       // Step 1: Client validation
       const clientResult = await clientVouch.validate(email);
 
-      if (clientResult.recommendation === 'block') {
+      if (!clientResult.success || !clientResult.data) {
+        showError(clientResult.error || 'Validation failed');
+        return;
+      }
+
+      if (!clientResult.data.checks.syntax?.pass || !clientResult.data.checks.disposable?.pass) {
         showError('Please use a valid email address');
         return;
       }
@@ -74,7 +79,13 @@ Use both client-side and server-side validation for optimal results:
       // Step 3: Server validation
       const result = await serverVouch.validate(req.body.email);
 
-      if (result.recommendation === 'block') {
+      if (!result.success || !result.data) {
+        return res.status(result.statusCode || 400).json({
+          error: result.error || 'Validation failed'
+        });
+      }
+
+      if (!result.data.checks.syntax?.pass || !result.data.checks.disposable?.pass) {
         return res.status(400).json({ error: 'Invalid email' });
       }
 
@@ -153,16 +164,23 @@ async function validateEmail(email: string) {
     logger.warn('Vouch unavailable, using fallback', { error });
 
     // Fallback to basic validation
+    const isValid = isBasicEmailValid(email);
     return {
-      valid: isBasicEmailValid(email),
-      recommendation: isBasicEmailValid(email) ? 'flag' : 'block',
+      success: isValid,
+      statusCode: isValid ? 200 : 400,
+      error: isValid ? undefined : 'Basic validation failed',
       fallback: true,
-      validations: {
-        syntax: {
-          valid: isBasicEmailValid(email),
-          message: 'Basic validation (Vouch unavailable)'
-        }
-      }
+      data: isValid ? {
+        checks: {
+          syntax: {
+            pass: true,
+            latency: 0
+          }
+        },
+        deviceData: null,
+        ipData: null,
+        signals: ['fallback']
+      } : undefined
     };
   }
 }
@@ -279,24 +297,58 @@ async function validateEmail(options: ValidateOptions): Promise<ValidateResult> 
   });
 
   return {
-    isValid: result.valid,
-    recommendation: result.recommendation,
-    score: result.score || 0,
+    isValid: result.success && result.data !== undefined,
+    recommendation: getRecommendation(result),
+    score: calculateScore(result),
     flags: extractFlags(result),
     raw: result
   };
 }
 
-function extractFlags(result: any): string[] {
-  const flags: string[] = [];
+function getRecommendation(result: any): 'allow' | 'flag' | 'block' {
+  if (!result.success || !result.data) return 'block';
 
-  if (result.validations.disposable?.valid === false) {
+  const { checks } = result.data;
+
+  // Block if critical checks fail
+  if (!checks.syntax?.pass || !checks.disposable?.pass) {
+    return 'block';
+  }
+
+  // Flag if suspicious
+  if (!checks.deviceFingerprint?.pass || !checks.ipReputation?.pass) {
+    return 'flag';
+  }
+
+  return 'allow';
+}
+
+function calculateScore(result: any): number {
+  if (!result.success || !result.data) return 0;
+
+  const { checks } = result.data;
+  let score = 100;
+
+  Object.values(checks).forEach((check: any) => {
+    if (!check.pass) score -= 20;
+  });
+
+  return Math.max(0, score);
+}
+
+function extractFlags(result: any): string[] {
+  if (!result.success || !result.data) return [];
+
+  const flags: string[] = [];
+  const { checks } = result.data;
+
+  if (!checks.disposable?.pass) {
     flags.push('disposable');
   }
-  if (result.validations.catchall?.valid === false) {
+  if (!checks.catchall?.pass) {
     flags.push('catchall');
   }
-  if (result.validations.role?.valid === false) {
+  if (!checks.roleEmail?.pass) {
     flags.push('role_email');
   }
 
@@ -613,16 +665,24 @@ function EmailInput() {
         type="email"
         value={email}
         onChange={handleChange}
-        className={validation?.recommendation === 'block' ? 'error' : ''}
+        className={
+          validation && !validation.success ||
+          (validation?.data && !validation.data.checks.syntax?.pass)
+            ? 'error'
+            : ''
+        }
       />
       {isValidating && <span>Validating...</span>}
-      {validation?.recommendation === 'block' && (
+      {validation && !validation.success && (
+        <span className="error">{validation.error || 'Please use a valid email address'}</span>
+      )}
+      {validation?.success && validation.data && !validation.data.checks.syntax?.pass && (
         <span className="error">Please use a valid email address</span>
       )}
-      {validation?.recommendation === 'flag' && (
+      {validation?.success && validation.data && (!validation.data.checks.deviceFingerprint?.pass || !validation.data.checks.ipReputation?.pass) && (
         <span className="warning">This email may have issues</span>
       )}
-      {validation?.recommendation === 'allow' && (
+      {validation?.success && validation.data && validation.data.checks.syntax?.pass && validation.data.checks.disposable?.pass && (
         <span className="success">✓ Email looks good</span>
       )}
     </div>
@@ -650,7 +710,12 @@ document.querySelector('form')?.addEventListener('submit', async (e) => {
   // Client-side validation
   const result = await vouch.validate(email);
 
-  if (result.recommendation === 'block') {
+  if (!result.success || !result.data) {
+    showError(result.error || 'Invalid email');
+    return;
+  }
+
+  if (!result.data.checks.syntax?.pass || !result.data.checks.disposable?.pass) {
     showError('Invalid email');
     return;
   }
@@ -666,19 +731,29 @@ Provide actionable feedback:
 
 ```typescript
 function getErrorMessage(result: ValidationResult): string {
-  if (result.validations.syntax?.valid === false) {
+  if (!result.success) {
+    return result.error || 'Validation failed';
+  }
+
+  if (!result.data) {
+    return 'Please use a valid email address';
+  }
+
+  const { checks } = result.data;
+
+  if (!checks.syntax?.pass) {
     return 'Please check your email format';
   }
 
-  if (result.validations.disposable?.valid === false) {
+  if (!checks.disposable?.pass) {
     return 'Please use a permanent email address';
   }
 
-  if (result.validations.mx?.valid === false) {
+  if (!checks.mx?.pass) {
     return 'This email domain cannot receive emails';
   }
 
-  if (result.validations.smtp?.valid === false) {
+  if (!checks.smtp?.pass) {
     return 'This email address does not exist';
   }
 
@@ -712,7 +787,8 @@ async function validateWithLogging(email: string) {
 
     logger.info('Validation successful', {
       email: redactEmail(email),
-      recommendation: result.recommendation,
+      success: result.success,
+      statusCode: result.statusCode,
       duration: Date.now() - startTime
     });
 
@@ -761,7 +837,8 @@ class MetricsCollector {
       const result = await vouch.validate(email);
 
       // Track recommendation
-      this.metrics[result.recommendation]++;
+      const recommendation = getRecommendation(result);
+      this.metrics[recommendation]++;
 
       // Track duration
       const duration = Date.now() - startTime;
@@ -826,8 +903,16 @@ import { vi } from 'vitest';
 vi.mock('@vouch/node', () => ({
   default: vi.fn().mockImplementation(() => ({
     validate: vi.fn().mockResolvedValue({
-      valid: true,
-      recommendation: 'allow'
+      success: true,
+      statusCode: 200,
+      data: {
+        checks: {
+          syntax: { pass: true, latency: 2 }
+        },
+        deviceData: null,
+        ipData: null,
+        signals: []
+      }
     })
   }))
 }));
@@ -835,7 +920,7 @@ vi.mock('@vouch/node', () => ({
 describe('validateEmail', () => {
   it('validates email successfully', async () => {
     const result = await validateEmail('user@example.com');
-    expect(result.valid).toBe(true);
+    expect(result.success).toBe(true);
   });
 });
 ```
@@ -853,12 +938,14 @@ describe('Vouch Integration', () => {
 
   it('blocks disposable email', async () => {
     const result = await vouch.validate('test@tempmail.com');
-    expect(result.recommendation).toBe('block');
+    expect(result.success).toBe(true);
+    expect(result.data?.checks.disposable?.pass).toBe(false);
   });
 
   it('allows valid email', async () => {
     const result = await vouch.validate('test@gmail.com');
-    expect(result.recommendation).toBe('allow');
+    expect(result.success).toBe(true);
+    expect(result.data?.checks.syntax?.pass).toBe(true);
   });
 });
 ```

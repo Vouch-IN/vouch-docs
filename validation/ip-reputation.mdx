@@ -489,7 +489,7 @@ Configure different actions per threat type:
 Many legitimate users use VPNs for privacy:
 
 ```jsx
-{result.signals.ipReputation.threats.includes('vpn') && (
+{result.data?.ipData?.isVPN && (
   <Alert variant="warning">
     <p>We detected you're using a VPN.</p>
     <p className="text-sm">
@@ -508,7 +508,7 @@ Many legitimate users use VPNs for privacy:
 Tor users expect blocks on many sites:
 
 ```jsx
-{result.signals.ipReputation.threats.includes('tor') && (
+{result.data?.ipData?.isTor && (
   <Alert variant="error">
     <p>Tor network detected.</p>
     <p className="text-sm">
@@ -525,30 +525,37 @@ Tor users expect blocks on many sites:
 ```javascript Check IP Reputation
 const result = await vouch.validate('user@example.com');
 
-const ip = result.signals.ipReputation;
+if (result.data?.ipData) {
+  const ip = result.data.ipData;
 
-console.log(`IP: ${ip.ipAddress}`);
-console.log(`Country: ${ip.country}`);
-console.log(`ISP: ${ip.isp}`);
-console.log(`Threats: ${ip.threats.join(', ')}`);
-console.log(`Risk: ${ip.risk}`);
+  console.log(`IP: ${ip.ip}`);
+  console.log(`VPN: ${ip.isVPN}`);
+  console.log(`Fraud: ${ip.isFraud}`);
 
-if (ip.threats.includes('vpn')) {
-  console.log('VPN detected');
-}
+  if (ip.isVPN) {
+    console.log('VPN detected');
+  }
 
-if (ip.fraudScore > 75) {
-  console.log('⚠️ High fraud risk');
+  if (ip.isFraud) {
+    console.log('⚠️ High fraud risk');
+  }
 }
 ```
 
 ```javascript Server-Side IP Override
-// Override IP for server-side validation
-const result = await vouch.validate('user@example.com', {
-  ip: request.headers['x-forwarded-for'] || request.ip
-});
+// Server-side validation with custom options
+const result = await vouch.validate(
+  'user@example.com',
+  undefined, // No client fingerprint
+  {
+    ip: request.headers['x-forwarded-for'] || request.ip,
+    userAgent: request.headers['user-agent']
+  }
+);
 
-console.log(`Validating from IP: ${result.metadata.ipAddress}`);
+if (result.data?.ipData) {
+  console.log(`Validating from IP: ${result.data.ipData.ip}`);
+}
 ```
 </CodeGroup>
 

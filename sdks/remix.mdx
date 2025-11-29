@@ -47,12 +47,22 @@ export async function action({ request }: ActionArgs) {
   const formData = await request.formData();
   const email = formData.get('email') as string;
 
-  const result = await vouch.validate(email, {
-    ip: request.headers.get('x-forwarded-for') || 'unknown',
-    userAgent: request.headers.get('user-agent') || 'unknown'
-  });
+  const result = await vouch.validate(
+    email,
+    undefined, // No client fingerprint
+    {
+      ip: request.headers.get('x-forwarded-for') || 'unknown',
+      userAgent: request.headers.get('user-agent') || 'unknown'
+    }
+  );
 
-  if (result.recommendation === 'block') {
+  if (!result.success) {
+    return json({
+      error: result.error || 'Validation failed'
+    }, { status: result.statusCode || 400 });
+  }
+
+  if (result.data && (!result.data.checks.syntax?.pass || !result.data.checks.disposable?.pass)) {
     return json({
       error: 'This email address cannot be used'
     }, { status: 400 });
@@ -115,8 +125,14 @@ function SignupForm() {
 
     const result = await validate(email);
 
-    if (result.recommendation === 'allow') {
-      e.target.submit();
+    if (result.success && result.data) {
+      const allChecksPassed = Object.values(result.data.checks).every(
+        check => check.pass
+      );
+
+      if (allChecksPassed) {
+        e.target.submit();
+      }
     }
   };
 

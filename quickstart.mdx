@@ -121,12 +121,16 @@ Choose your platform:
     // Validate an email (includes automatic device fingerprinting)
     const result = await vouch.validate('user@example.com');
 
-    if (result.recommendation === 'block') {
-      console.log('Email blocked:', result.signals);
-    } else if (result.recommendation === 'flag') {
-      console.log('Email flagged for review:', result.signals);
-    } else {
-      console.log('Email is valid!');
+    if (!result.success) {
+      console.log('Validation failed:', result.error);
+    } else if (result.data) {
+      const { checks, deviceData } = result.data;
+
+      if (!checks.syntax?.pass || !checks.disposable?.pass) {
+        console.log('Email blocked:', result.data.signals);
+      } else {
+        console.log('Email is valid!');
+      }
     }
     ```
   </Tab>
@@ -166,8 +170,11 @@ Choose your platform:
             {loading ? 'Validating...' : 'Sign Up'}
           </button>
 
-          {result?.recommendation === 'block' && (
-            <p>This email cannot be used</p>
+          {result && !result.success && (
+            <p>{result.error || 'This email cannot be used'}</p>
+          )}
+          {result?.data && !result.data.checks.disposable?.pass && (
+            <p>Disposable emails are not allowed</p>
           )}
         </form>
       );
@@ -191,10 +198,19 @@ Choose your platform:
       userAgent: request.headers['user-agent']
     });
 
-    if (result.recommendation === 'allow') {
-      // Create user account
+    if (result.success && result.data) {
+      const allChecksPassed = Object.values(result.data.checks).every(
+        check => check.pass
+      );
+
+      if (allChecksPassed) {
+        // Create user account
+      } else {
+        // Reject signup or flag for review
+      }
     } else {
-      // Reject signup or flag for review
+      // Handle validation error
+      console.error(result.error);
     }
     ```
   </Tab>
@@ -252,10 +268,17 @@ Choose your platform:
             do {
                 let result = try await vouch.validate(email)
 
-                if result.recommendation == "allow" {
-                    // Create account
+                if result.success, let data = result.data {
+                    // Check validation results
+                    let allChecksPassed = data.checks.values.allSatisfy { $0.pass }
+                    if allChecksPassed {
+                        // Create account
+                    } else {
+                        // Show error
+                    }
                 } else {
-                    // Show error
+                    // Handle validation error
+                    print("Error: \(result.error ?? "Unknown error")")
                 }
             } catch {
                 print("Validation failed: \(error)")
@@ -280,10 +303,17 @@ Choose your platform:
             try {
                 val result = vouch.validate(email)
 
-                if (result.recommendation == "allow") {
-                    // Create account
+                if (result.success && result.data != null) {
+                    // Check validation results
+                    val allChecksPassed = result.data.checks.values.all { it.pass }
+                    if (allChecksPassed) {
+                        // Create account
+                    } else {
+                        // Show error
+                    }
                 } else {
-                    // Show error
+                    // Handle validation error
+                    println("Error: ${result.error}")
                 }
             } catch (e: Exception) {
                 // Handle error
@@ -303,34 +333,59 @@ Every validation returns a result with:
 ```typescript
 {
   "success": true,
-  "valid": true,
-  "email": "user@example.com",
-  "normalized": "user@example.com",
-  "recommendation": "allow", // "allow", "flag", or "block"
-  "signals": {
-    "syntax": { "valid": true, "action": "allow" },
-    "disposable": { "valid": true, "action": "allow" },
-    "mx": { "valid": true, "action": "allow" },
-    "smtp": { "valid": true, "action": "allow" },
-    "catchall": { "valid": false, "action": "flag" },
-    "roleEmail": { "valid": false, "action": "allow" },
-    "alias": { "valid": false, "action": "flag" },
-    "deviceFingerprint": { "valid": true, "action": "allow" },
-    "ipReputation": { "valid": true, "action": "allow" }
-  },
-  "metadata": {
-    "deviceId": "abc123...",
-    "ipAddress": "192.168.1.1",
-    "country": "US"
+  "statusCode": 200,
+  "data": {
+    "checks": {
+      "syntax": { "pass": true, "latency": 2 },
+      "disposable": { "pass": true, "latency": 15 },
+      "mx": { "pass": true, "latency": 45 },
+      "smtp": { "pass": true, "latency": 120 }
+    },
+    "deviceData": {
+      "isKnownDevice": false,
+      "isNewEmail": true,
+      "emailsUsed": 1,
+      "previousSignups": 0,
+      "firstSeen": 1699564800000,
+      "lastSeen": 1699564800000
+    },
+    "ipData": {
+      "ip": "192.168.1.1",
+      "isVPN": false,
+      "isFraud": false
+    },
+    "signals": ["new_device", "valid_email"]
   }
 }
 ```
 
-### Recommendation Values
+### Key Fields
 
-- **`allow`** - Email passed all checks, safe to proceed
-- **`flag`** - Email has suspicious signals, review recommended
-- **`block`** - Email failed critical checks, should be rejected
+- **`success`** - Whether the validation completed successfully
+- **`data.checks`** - Individual validation results (syntax, disposable, mx, smtp, etc.)
+- **`data.deviceData`** - Device fingerprint information
+- **`data.ipData`** - IP reputation data
+- **`data.signals`** - Array of signal identifiers detected
+
+### Handling Results
+
+Check individual validations based on your requirements:
+
+```javascript
+if (result.success && result.data) {
+  const { checks } = result.data;
+
+  // Critical checks - block if failed
+  if (!checks.syntax?.pass || !checks.disposable?.pass) {
+    // Block signup
+  }
+
+  // Warning checks - flag for review
+  if (!checks.deviceFingerprint?.pass || result.data.deviceData.emailsUsed > 5) {
+    // Flag for manual review
+  }
+}
+```
 
 ### Individual Signals
 

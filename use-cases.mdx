@@ -49,18 +49,27 @@ Vouch helps protect your application from fraud, spam, and fake accounts across 
 // Example: Block fake signups
 const result = await vouch.validate(email);
 
-if (result.recommendation === 'block') {
+if (!result.success || !result.data) {
+  return res.status(result.statusCode || 400).json({
+    error: result.error || 'Validation failed'
+  });
+}
+
+const { checks, signals } = result.data;
+
+// Block critical failures
+if (!checks.syntax?.pass || !checks.disposable?.pass) {
   return res.status(400).json({
     error: 'Please use a permanent email address'
   });
 }
 
-if (result.recommendation === 'flag') {
-  // Flag account for manual review
+// Flag suspicious patterns
+if (!checks.deviceFingerprint?.pass || !checks.ipReputation?.pass) {
   await db.users.create({
     email,
     needsReview: true,
-    flagReasons: result.signals
+    flagReasons: signals
   });
 }
 ```
@@ -86,18 +95,24 @@ if (result.recommendation === 'flag') {
 // Example: Qualify leads in real-time
 const result = await vouch.validate(leadEmail);
 
+if (!result.success || !result.data) {
+  return;
+}
+
+const { checks, deviceData } = result.data;
+
 const leadQuality = {
-  email: result.normalized,
+  email: leadEmail,
   score: calculateScore(result),
   flags: extractFlags(result),
-  deviceId: result.metadata.deviceId
+  deviceId: deviceData?.isKnownDevice
 };
 
-if (result.signals.disposable.valid === false) {
+if (!checks.disposable?.pass) {
   leadQuality.score -= 50; // Major penalty
 }
 
-if (result.signals.catchall.valid === false) {
+if (!checks.catchall?.pass) {
   leadQuality.score -= 20; // Moderate penalty
 }
 
@@ -125,21 +140,30 @@ await crm.createLead(leadQuality);
 // Example: Prevent promo code abuse
 const result = await vouch.validate(email);
 
-// Check if this device has created multiple accounts
-const deviceHistory = result.metadata.deviceId;
-const previousOrders = await db.orders.find({
-  deviceId: deviceHistory,
-  promoCodeUsed: true
-});
-
-if (previousOrders.length > 0) {
-  return res.status(400).json({
-    error: 'Promo code already used'
+if (!result.success || !result.data) {
+  return res.status(result.statusCode || 400).json({
+    error: result.error || 'Validation failed'
   });
 }
 
+const { deviceData, ipData, checks } = result.data;
+
+// Check if this device has created multiple accounts
+if (deviceData && deviceData.previousSignups > 0) {
+  const previousOrders = await db.orders.find({
+    deviceId: deviceData.isKnownDevice,
+    promoCodeUsed: true
+  });
+
+  if (previousOrders.length > 0) {
+    return res.status(400).json({
+      error: 'Promo code already used'
+    });
+  }
+}
+
 // Check for high-risk signals
-if (result.signals.ipReputation.valid === false) {
+if (ipData?.isVPN || ipData?.isFraud || !checks.ipReputation?.pass) {
   await flagForFraudReview(email, 'VPN/Proxy detected');
 }
 ```
@@ -165,9 +189,17 @@ if (result.signals.ipReputation.valid === false) {
 // Example: Prevent trial abuse
 const result = await vouch.validate(email);
 
+if (!result.success || !result.data) {
+  return res.status(result.statusCode || 400).json({
+    error: result.error || 'Validation failed'
+  });
+}
+
+const { checks, deviceData } = result.data;
+
 // Check for alias (user+anything@domain.com)
-if (!result.signals.alias.valid) {
-  const baseEmail = normalizeAlias(result.normalized);
+if (!checks.alias?.pass) {
+  const baseEmail = normalizeAlias(email);
   const existingTrial = await db.trials.findOne({
     baseEmail: baseEmail
   });
@@ -180,14 +212,16 @@ if (!result.signals.alias.valid) {
 }
 
 // Check device fingerprint
-const existingTrialByDevice = await db.trials.findOne({
-  deviceId: result.metadata.deviceId
-});
-
-if (existingTrialByDevice) {
-  return res.status(400).json({
-    error: 'Trial limit reached'
+if (deviceData && deviceData.isKnownDevice) {
+  const existingTrialByDevice = await db.trials.findOne({
+    deviceId: deviceData.isKnownDevice
   });
+
+  if (existingTrialByDevice) {
+    return res.status(400).json({
+      error: 'Trial limit reached'
+    });
+  }
 }
 ```
 
@@ -212,8 +246,16 @@ if (existingTrialByDevice) {
 // Example: Build clean email lists
 const result = await vouch.validate(subscriberEmail);
 
+if (!result.success || !result.data) {
+  return res.status(result.statusCode || 400).json({
+    error: result.error || 'Validation failed'
+  });
+}
+
+const { checks } = result.data;
+
 // Only add valid, deliverable emails
-if (!result.signals.mx.valid) {
+if (!checks.mx?.pass) {
   return res.status(400).json({
     error: 'Email domain cannot receive mail'
   });
@@ -221,8 +263,8 @@ if (!result.signals.mx.valid) {
 
 // Flag catch-all domains (may have lower engagement)
 const emailListRecord = {
-  email: result.normalized,
-  quality: result.signals.catchall.valid ? 'high' : 'medium',
+  email: subscriberEmail,
+  quality: checks.catchall?.pass ? 'high' : 'medium',
   addedAt: new Date()
 };
 
@@ -251,12 +293,20 @@ await emailList.add(emailListRecord);
 // Example: One entry per person
 const result = await vouch.validate(entryEmail);
 
+if (!result.success || !result.data) {
+  return res.status(result.statusCode || 400).json({
+    error: result.error || 'Validation failed'
+  });
+}
+
+const { deviceData, ipData, checks } = result.data;
+
 // Check for duplicate device
 const existingEntries = await db.entries.find({
   $or: [
-    { deviceId: result.metadata.deviceId },
-    { ipAddress: result.metadata.ipAddress },
-    { emailHash: sha256(result.normalized) }
+    { deviceId: deviceData?.isKnownDevice },
+    { ipAddress: ipData?.ip },
+    { emailHash: sha256(entryEmail) }
   ]
 });
 
@@ -267,8 +317,8 @@ if (existingEntries.length > 0) {
 }
 
 // Detect alias attempts
-if (!result.signals.alias.valid) {
-  const baseEmail = normalizeAlias(result.normalized);
+if (!checks.alias?.pass) {
+  const baseEmail = normalizeAlias(entryEmail);
   const baseEmailEntry = await db.entries.findOne({
     baseEmail: baseEmail
   });
@@ -302,6 +352,12 @@ if (!result.signals.alias.valid) {
 // Example: Institutional email verification
 const result = await vouch.validate(studentEmail);
 
+if (!result.success || !result.data) {
+  return res.status(result.statusCode || 400).json({
+    error: result.error || 'Validation failed'
+  });
+}
+
 // Require .edu email for student discounts
 if (!studentEmail.endsWith('.edu')) {
   return res.status(400).json({
@@ -309,15 +365,19 @@ if (!studentEmail.endsWith('.edu')) {
   });
 }
 
+const { checks, deviceData } = result.data;
+
 // Verify domain has MX records (some .edu emails are invalid)
-if (!result.signals.mx.valid) {
+if (!checks.mx?.pass) {
   return res.status(400).json({
     error: 'Unable to verify your institutional email'
   });
 }
 
 // Track device for account sharing detection
-await trackDeviceUsage(result.metadata.deviceId, studentEmail);
+if (deviceData) {
+  await trackDeviceUsage(deviceData, studentEmail);
+}
 ```
 
 **Results:**

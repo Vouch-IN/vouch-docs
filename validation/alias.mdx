@@ -202,10 +202,10 @@ Store both the full email and base email:
 ```javascript
 const result = await vouch.validate('user+shopping@gmail.com');
 
-if (!result.signals.alias.valid) {
+if (result.data && !result.data.checks.alias?.pass) {
   // Alias detected
-  const fullEmail = result.email; // user+shopping@gmail.com
-  const baseEmail = result.signals.alias.baseEmail; // user@gmail.com
+  const fullEmail = result.data.checks.alias?.metadata?.fullEmail; // user+shopping@gmail.com
+  const baseEmail = result.data.checks.alias?.metadata?.baseEmail; // user@gmail.com
 
   // Check if base email already exists
   const existingUser = await db.users.findOne({
@@ -251,11 +251,11 @@ normalizeGmail('j.o.h.n@gmail.com')      // john@gmail.com
 ### Communicating Restrictions
 
 ```jsx
-{result.signals.alias.valid === false && (
+{result.data && !result.data.checks.alias?.pass && (
   <Alert variant="info">
     <p>Email aliases (+ addressing) detected.</p>
     <p className="text-sm">
-      Please use your base email address: {result.signals.alias.baseEmail}
+      Please use your base email address: {result.data.checks.alias?.metadata?.baseEmail}
     </p>
   </Alert>
 )}
@@ -264,11 +264,11 @@ normalizeGmail('j.o.h.n@gmail.com')      // john@gmail.com
 ### Auto-Suggest Base Email
 
 ```jsx
-{result.signals.alias.valid === false && (
+{result.data && !result.data.checks.alias?.pass && (
   <div>
     <p>We detected an email alias.</p>
-    <Button onClick={() => setEmail(result.signals.alias.baseEmail)}>
-      Use {result.signals.alias.baseEmail} instead
+    <Button onClick={() => setEmail(result.data.checks.alias?.metadata?.baseEmail)}>
+      Use {result.data.checks.alias?.metadata?.baseEmail} instead
     </Button>
   </div>
 )}
@@ -286,7 +286,9 @@ const aliases = [
 
 for (const email of aliases) {
   const result = await vouch.validate(email);
-  console.log(`${email} → ${result.signals.alias.baseEmail}`);
+  if (result.data && !result.data.checks.alias?.pass) {
+    console.log(`${email} → ${result.data.checks.alias?.metadata?.baseEmail}`);
+  }
 }
 ```
 
@@ -299,7 +301,9 @@ const regular = [
 
 for (const email of regular) {
   const result = await vouch.validate(email);
-  console.log(`${email}: alias = ${!result.signals.alias.valid}`);
+  if (result.data) {
+    console.log(`${email}: alias = ${!result.data.checks.alias?.pass}`);
+  }
 }
 ```
 </CodeGroup>

@@ -66,10 +66,15 @@ Mock Vouch SDK for isolated unit tests:
 
       it('returns valid for allowed emails', async () => {
         const mockValidate = vi.fn().mockResolvedValue({
-          valid: true,
-          recommendation: 'allow',
-          validations: {
-            syntax: { valid: true }
+          success: true,
+          statusCode: 200,
+          data: {
+            checks: {
+              syntax: { pass: true, latency: 2 }
+            },
+            deviceData: null,
+            ipData: null,
+            signals: []
           }
         });
 
@@ -80,16 +85,21 @@ Mock Vouch SDK for isolated unit tests:
 
         const result = await validateEmail('user@example.com');
 
-        expect(result.valid).toBe(true);
+        expect(result.success).toBe(true);
         expect(mockValidate).toHaveBeenCalledWith('user@example.com');
       });
 
       it('returns invalid for blocked emails', async () => {
         const mockValidate = vi.fn().mockResolvedValue({
-          valid: false,
-          recommendation: 'block',
-          validations: {
-            disposable: { valid: false }
+          success: true,
+          statusCode: 200,
+          data: {
+            checks: {
+              disposable: { pass: false, latency: 15 }
+            },
+            deviceData: null,
+            ipData: null,
+            signals: ['disposable_email']
           }
         });
 
@@ -100,8 +110,8 @@ Mock Vouch SDK for isolated unit tests:
 
         const result = await validateEmail('test@tempmail.com');
 
-        expect(result.valid).toBe(false);
-        expect(result.recommendation).toBe('block');
+        expect(result.success).toBe(true);
+        expect(result.data?.checks.disposable?.pass).toBe(false);
       });
 
       it('handles API errors gracefully', async () => {
@@ -142,28 +152,41 @@ Mock Vouch SDK for isolated unit tests:
 
       it('validates email successfully', async () => {
         mockValidate.mockResolvedValue({
-          valid: true,
-          recommendation: 'allow'
+          success: true,
+          statusCode: 200,
+          data: {
+            checks: {
+              syntax: { pass: true, latency: 2 }
+            },
+            deviceData: null,
+            ipData: null,
+            signals: []
+          }
         });
 
         const result = await validateEmail('user@example.com');
 
-        expect(result.valid).toBe(true);
+        expect(result.success).toBe(true);
         expect(mockValidate).toHaveBeenCalledWith('user@example.com');
       });
 
       it('blocks disposable emails', async () => {
         mockValidate.mockResolvedValue({
-          valid: false,
-          recommendation: 'block',
-          validations: {
-            disposable: { valid: false }
+          success: true,
+          statusCode: 200,
+          data: {
+            checks: {
+              disposable: { pass: false, latency: 15 }
+            },
+            deviceData: null,
+            ipData: null,
+            signals: ['disposable_email']
           }
         });
 
         const result = await validateEmail('test@tempmail.com');
 
-        expect(result.recommendation).toBe('block');
+        expect(result.data?.checks.disposable?.pass).toBe(false);
       });
     });
     ```
@@ -195,13 +218,21 @@ Mock Vouch SDK for isolated unit tests:
 
       it('validates email successfully', async () => {
         mockValidate.resolves({
-          valid: true,
-          recommendation: 'allow'
+          success: true,
+          statusCode: 200,
+          data: {
+            checks: {
+              syntax: { pass: true, latency: 2 }
+            },
+            deviceData: null,
+            ipData: null,
+            signals: []
+          }
         });
 
         const result = await validateEmail('user@example.com');
 
-        expect(result.valid).to.be.true;
+        expect(result.success).to.be.true;
         expect(mockValidate).to.have.been.calledWith('user@example.com');
       });
     });
@@ -258,38 +289,59 @@ Use fixtures for consistent test data:
 // fixtures/validation-responses.ts
 export const validationFixtures = {
   validEmail: {
-    valid: true,
-    recommendation: 'allow',
-    validations: {
-      syntax: { valid: true, message: 'Valid format' },
-      disposable: { valid: true, message: 'Not disposable' },
-      mx: { valid: true, records: ['mx1.example.com'] }
+    success: true,
+    statusCode: 200,
+    data: {
+      checks: {
+        syntax: { pass: true, latency: 2 },
+        disposable: { pass: true, latency: 15 },
+        mx: { pass: true, latency: 45, metadata: { records: ['mx1.example.com'] } }
+      },
+      deviceData: null,
+      ipData: null,
+      signals: ['valid_email']
     }
   },
 
   disposableEmail: {
-    valid: false,
-    recommendation: 'block',
-    validations: {
-      syntax: { valid: true, message: 'Valid format' },
-      disposable: {
-        valid: false,
-        domain: 'tempmail.com',
-        message: 'Disposable email detected'
-      }
+    success: true,
+    statusCode: 200,
+    data: {
+      checks: {
+        syntax: { pass: true, latency: 2 },
+        disposable: {
+          pass: false,
+          latency: 15,
+          metadata: {
+            domain: 'tempmail.com',
+            isDisposable: true
+          }
+        }
+      },
+      deviceData: null,
+      ipData: null,
+      signals: ['disposable_email']
     }
   },
 
   roleEmail: {
-    valid: true,
-    recommendation: 'flag',
-    validations: {
-      syntax: { valid: true, message: 'Valid format' },
-      role: {
-        valid: false,
-        role: 'admin',
-        message: 'Role-based email'
-      }
+    success: true,
+    statusCode: 200,
+    data: {
+      checks: {
+        syntax: { pass: true, latency: 2 },
+        roleEmail: {
+          pass: false,
+          latency: 10,
+          metadata: {
+            role: 'admin',
+            isRoleEmail: true
+          }
+        }
+      },
+      deviceData: null,
+      ipData: null,
+      signals: ['role_email']
     }
   }
 };
@@ -302,7 +354,7 @@ it('handles disposable email', async () => {
 
   const result = await validateEmail('test@tempmail.com');
 
-  expect(result.recommendation).toBe('block');
+  expect(result.data?.checks.disposable?.pass).toBe(false);
 });
 ```
 
@@ -330,15 +382,16 @@ describe('Vouch Integration', () => {
     it('validates Gmail address', async () => {
       const result = await vouch.validate('test@gmail.com');
 
-      expect(result.valid).toBe(true);
-      expect(result.validations.syntax.valid).toBe(true);
-      expect(result.validations.mx.valid).toBe(true);
+      expect(result.success).toBe(true);
+      expect(result.data?.checks.syntax?.pass).toBe(true);
+      expect(result.data?.checks.mx?.pass).toBe(true);
     });
 
     it('validates custom domain', async () => {
       const result = await vouch.validate('user@example.com');
 
-      expect(result.validations.syntax.valid).toBe(true);
+      expect(result.success).toBe(true);
+      expect(result.data?.checks.syntax?.pass).toBe(true);
     });
   });
 
@@ -346,15 +399,15 @@ describe('Vouch Integration', () => {
     it('blocks disposable email', async () => {
       const result = await vouch.validate('test@tempmail.com');
 
-      expect(result.recommendation).toBe('block');
-      expect(result.validations.disposable.valid).toBe(false);
+      expect(result.success).toBe(true);
+      expect(result.data?.checks.disposable?.pass).toBe(false);
     });
 
     it('blocks malformed email', async () => {
       const result = await vouch.validate('not-an-email');
 
-      expect(result.valid).toBe(false);
-      expect(result.validations.syntax.valid).toBe(false);
+      expect(result.success).toBe(false);
+      expect(result.error).toBeTruthy();
     });
   });
 
@@ -362,13 +415,15 @@ describe('Vouch Integration', () => {
     it('handles plus addressing', async () => {
       const result = await vouch.validate('user+tag@example.com');
 
-      expect(result.validations.alias).toBeDefined();
+      expect(result.success).toBe(true);
+      expect(result.data?.checks.alias).toBeDefined();
     });
 
     it('detects role emails', async () => {
       const result = await vouch.validate('admin@example.com');
 
-      expect(result.validations.role.valid).toBe(false);
+      expect(result.success).toBe(true);
+      expect(result.data?.checks.roleEmail?.pass).toBe(false);
     });
   });
 });
@@ -422,8 +477,16 @@ describe('Retry Logic', () => {
         });
       }
       return Promise.resolve({
-        valid: true,
-        recommendation: 'allow'
+        success: true,
+        statusCode: 200,
+        data: {
+          checks: {
+            syntax: { pass: true, latency: 2 }
+          },
+          deviceData: null,
+          ipData: null,
+          signals: []
+        }
       });
     });
 
@@ -436,7 +499,7 @@ describe('Retry Logic', () => {
     });
 
     expect(attempts).toBe(3);
-    expect(result.valid).toBe(true);
+    expect(result.success).toBe(true);
   });
 });
 ```
@@ -613,7 +676,8 @@ describe('Disposable Detection', () => {
   testEmails.disposable.forEach(email => {
     it(`blocks ${email}`, async () => {
       const result = await vouch.validate(email);
-      expect(result.recommendation).toBe('block');
+      expect(result.success).toBe(true);
+      expect(result.data?.checks.disposable?.pass).toBe(false);
     });
   });
 });

@@ -180,9 +180,16 @@ export async function middleware(request: NextRequest) {
 
     const result = await vouch.validate(email);
 
-    if (result.recommendation === 'block') {
+    if (!result.success) {
       return NextResponse.json(
-        { error: 'Email blocked' },
+        { error: result.error || 'Validation failed' },
+        { status: result.statusCode || 400 }
+      );
+    }
+
+    if (result.data && !result.data.checks.syntax?.pass) {
+      return NextResponse.json(
+        { error: 'Invalid email format' },
         { status: 400 }
       );
     }

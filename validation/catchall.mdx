@@ -203,7 +203,7 @@ Consider blocking catch-all for:
 ### Handling Catch-All Emails
 
 ```jsx
-{result.signals.catchall.valid === false && (
+{result.data && !result.data.checks.catchall?.pass && (
   <Alert variant="warning">
     <p>We detected your email domain accepts all addresses.</p>
     <p className="text-sm">
@@ -222,7 +222,7 @@ For catch-all domains, implement email verification:
 
 ```javascript
 async function handleCatchAllEmail(email, result) {
-  if (result.signals.catchall.valid === false) {
+  if (result.data && !result.data.checks.catchall?.pass) {
     // Send verification email
     await sendVerificationEmail(email);
 
@@ -265,9 +265,9 @@ Track catch-all patterns in your dashboard:
 // Test with a known catch-all domain
 const result = await vouch.validate('random-test-123@catchall-domain.com');
 
-if (result.signals.catchall.valid === false) {
+if (result.data && !result.data.checks.catchall?.pass) {
   console.log('Catch-all detected!');
-  console.log(`Confidence: ${result.signals.catchall.confidence}`);
+  console.log(`Confidence: ${result.data.checks.catchall?.metadata?.confidence}`);
 }
 ```
 
@@ -275,7 +275,7 @@ if (result.signals.catchall.valid === false) {
 // Test with a regular domain (e.g., Gmail)
 const result = await vouch.validate('test@gmail.com');
 
-if (result.signals.catchall.valid === true) {
+if (result.data && result.data.checks.catchall?.pass) {
   console.log('Not a catch-all domain');
 }
 ```

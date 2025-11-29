@@ -289,7 +289,11 @@ function shouldCallAPI(email: string): boolean {
 
 async function smartValidate(email: string) {
   if (!shouldCallAPI(email)) {
-    return { valid: false, recommendation: 'block' };
+    return {
+      success: false,
+      statusCode: 400,
+      error: 'Invalid email format'
+    };
   }
 
   return await vouch.validate(email);

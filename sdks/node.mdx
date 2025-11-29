@@ -40,11 +40,25 @@ const vouch = new Vouch(
   process.env.VOUCH_SERVER_KEY
 );
 
-// Validate an email
+// Validate an email (server-side, no device fingerprint)
 const result = await vouch.validate('user@example.com');
 
-if (result.recommendation === 'block') {
-  throw new Error('Invalid email address');
+// Or with optional fingerprint from client and request context
+const resultWithContext = await vouch.validate(
+  'user@example.com',
+  clientFingerprint, // Fingerprint object from client SDK
+  {
+    ip: req.ip,
+    userAgent: req.headers['user-agent']
+  }
+);
+
+if (!result.success) {
+  throw new Error(result.error || 'Validation failed');
+}
+
+if (result.data && !result.data.checks.syntax?.pass) {
+  throw new Error('Invalid email format');
 }
 ```
 
@@ -61,15 +75,30 @@ app.post('/api/signup', async (req, res) => {
   const { email } = req.body;
 
   try {
-    const result = await vouch.validate(email, {
-      ip: req.ip,
-      userAgent: req.get('user-agent')
-    });
+    const result = await vouch.validate(
+      email,
+      undefined, // No client fingerprint
+      {
+        ip: req.ip,
+        userAgent: req.get('user-agent')
+      }
+    );
 
-    if (result.recommendation === 'block') {
-      return res.status(400).json({
-        error: 'Email address cannot be used'
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json({
+        error: result.error || 'Validation failed'
       });
+    }
+
+    if (result.data) {
+      const { checks } = result.data;
+
+      // Check critical validations
+      if (!checks.syntax?.pass || !checks.disposable?.pass) {
+        return res.status(400).json({
+          error: 'Email address cannot be used'
+        });
+      }
     }
 
     // Create user

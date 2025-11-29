@@ -212,28 +212,37 @@ After all validations complete, Vouch aggregates the signals into a final recomm
 ### Recommendation Logic
 
 ```typescript
-function determineRecommendation(signals) {
-  // Any BLOCK check fails = BLOCK
-  if (signals.syntax.action === 'block' && !signals.syntax.valid) {
-    return 'block';
+function determineRecommendation(result: ValidationResponse) {
+  // Check if validation succeeded
+  if (!result.success || !result.data) {
+    return 'block'; // Failed validation
   }
 
-  if (signals.disposable.action === 'block' && !signals.disposable.valid) {
-    return 'block';
+  const { checks } = result.data;
+
+  // Any critical check fails = BLOCK
+  if (!checks.syntax?.pass) {
+    return 'block'; // Invalid syntax
   }
 
-  if (signals.mx.action === 'block' && !signals.mx.valid) {
-    return 'block';
+  if (!checks.disposable?.pass) {
+    return 'block'; // Disposable email
+  }
+
+  if (!checks.mx?.pass) {
+    return 'block'; // No mail servers
   }
 
   // Apply whitelist/blacklist
   if (isWhitelisted(email)) return 'allow';
   if (isBlacklisted(email)) return 'block';
 
-  // Count flagged signals
-  const flagCount = countFlags(signals);
+  // Count failed checks
+  const failedChecks = Object.values(checks).filter(
+    check => !check.pass
+  ).length;
 
-  if (flagCount >= threshold) {
+  if (failedChecks >= threshold) {
     return 'flag'; // Review recommended
   }
 

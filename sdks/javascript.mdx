@@ -47,12 +47,19 @@ const vouch = new Vouch(
 // Validate an email
 const result = await vouch.validate('user@example.com');
 
-if (result.recommendation === 'block') {
-  alert('This email cannot be used');
-} else if (result.recommendation === 'flag') {
-  console.warn('Email flagged for review:', result.signals);
-} else {
-  console.log('Email is valid!');
+if (!result.success) {
+  alert('Validation failed: ' + result.error);
+} else if (result.data) {
+  // Check individual validations
+  const { checks, deviceData, ipData } = result.data;
+
+  if (!checks.syntax?.pass) {
+    alert('Invalid email format');
+  } else if (!checks.disposable?.pass) {
+    alert('Disposable emails are not allowed');
+  } else {
+    console.log('Email is valid!');
+  }
 }
 ```
 
@@ -70,22 +77,18 @@ const vouch = new Vouch(projectId, apiKey);
 
 ```javascript
 const vouch = new Vouch(projectId, apiKey, {
-  // Enable fingerprinting (default: true)
-  enableFingerprint: true,
-
   // API endpoint (default: https://api.vouch.expert)
-  apiEndpoint: 'https://api.vouch.expert',
+  endpoint: 'https://api.vouch.expert',
 
-  // Request timeout in ms (default: 30000)
-  timeout: 30000,
-
-  // Enable debug logging
-  debug: false,
+  // API version (default: "latest")
+  version: 'latest', // or 1, 2, etc.
 
   // Custom fingerprint configuration
   fingerprintOptions: {
-    disableDevFallback: false,
-    skipCache: false
+    enableCanvas: true,
+    enableWebGL: true,
+    enableAudio: true,
+    enableFonts: true
   }
 });
 ```
@@ -97,7 +100,7 @@ const vouch = new Vouch(projectId, apiKey, {
 Validate an email address with automatic device fingerprinting:
 
 ```javascript
-const result = await vouch.validate(email, options);
+const result = await vouch.validate(email);
 ```
 
 **Parameters:**
@@ -106,73 +109,45 @@ const result = await vouch.validate(email, options);
   Email address to validate
 </ParamField>
 
-<ParamField path="options" type="object">
-  Optional validation options
+<Note>
+The JavaScript/browser SDK automatically includes device fingerprinting. The validate method does not accept additional options - use server-side SDKs for advanced options.
+</Note>
 
-  <Expandable title="Options">
-    <ParamField path="validations" type="object">
-      Override which validations to run
-
-      ```javascript
-      {
-        syntax: true,
-        disposable: true,
-        mx: true,
-        smtp: false,
-        catchall: true,
-        roleEmail: true,
-        alias: true,
-        deviceFingerprint: true,
-        ipReputation: true
-      }
-      ```
-    </ParamField>
-
-    <ParamField path="metadata" type="object">
-      Additional metadata to include
-
-      ```javascript
-      {
-        userId: '12345',
-        source: 'signup_form',
-        campaign: 'summer_promo'
-      }
-      ```
-    </ParamField>
-
-    <ParamField path="skipFingerprint" type="boolean">
-      Skip device fingerprinting (default: false)
-    </ParamField>
-  </Expandable>
-</ParamField>
-
-**Returns:** `Promise<ValidationResult>`
+**Returns:** `Promise<ValidationResponse>`
 
 ```typescript
-interface ValidationResult {
+interface ValidationResponse {
   success: boolean;
-  valid: boolean;
-  email: string;
-  normalized: string;
-  recommendation: 'allow' | 'flag' | 'block';
-  signals: {
-    syntax: ValidationSignal;
-    disposable: ValidationSignal;
-    mx: ValidationSignal;
-    smtp: ValidationSignal;
-    catchall: ValidationSignal;
-    roleEmail: ValidationSignal;
-    alias: ValidationSignal;
-    deviceFingerprint: ValidationSignal;
-    ipReputation: ValidationSignal;
+  error?: string;
+  statusCode?: number;
+  data?: {
+    checks: Record<string, CheckResult>;
+    deviceData: DeviceData | null;
+    ipData: IPData | null;
+    signals: string[];
   };
-  metadata: {
-    deviceId: string;
-    ipAddress: string;
-    country: string;
-    timestamp: number;
-    processingTime: number;
-  };
+}
+
+interface CheckResult {
+  pass: boolean;
+  error?: string;
+  latency: number;
+  metadata?: Record<string, unknown>;
+}
+
+interface DeviceData {
+  isKnownDevice: boolean;
+  isNewEmail: boolean;
+  emailsUsed: number;
+  previousSignups: number;
+  firstSeen: number;
+  lastSeen?: number;
+}
+
+interface IPData {
+  ip: string;
+  isVPN: boolean;
+  isFraud: boolean;
 }
 ```
 
@@ -203,21 +178,6 @@ interface Fingerprint {
 }
 ```
 
-### setMetadata()
-
-Set default metadata for all validations:
-
-```javascript
-vouch.setMetadata({
-  userId: '12345',
-  sessionId: 'abc-def-ghi',
-  source: 'mobile_app'
-});
-
-// Metadata automatically included in all subsequent validations
-const result = await vouch.validate('user@example.com');
-```
-
 ## Usage Examples
 
 ### Form Validation
@@ -245,14 +205,26 @@ const result = await vouch.validate('user@example.com');
     try {
       const result = await vouch.validate(email);
 
-      if (result.recommendation === 'block') {
-        errorDiv.textContent = 'This email address cannot be used';
+      if (!result.success) {
+        errorDiv.textContent = result.error || 'Validation failed';
         errorDiv.classList.remove('hidden');
         return;
       }
 
-      if (result.recommendation === 'flag') {
-        console.warn('Flagged email:', result.signals);
+      if (result.data) {
+        const { checks } = result.data;
+
+        // Check for specific validation failures
+        if (!checks.syntax?.pass || !checks.disposable?.pass) {
+          errorDiv.textContent = 'This email address cannot be used';
+          errorDiv.classList.remove('hidden');
+          return;
+        }
+
+        // Log suspicious patterns
+        if (!checks.deviceFingerprint?.pass || !checks.ipReputation?.pass) {
+          console.warn('Email flagged for review:', result.data);
+        }
       }
 
       // Proceed with signup
@@ -288,7 +260,7 @@ emailInput.addEventListener('input', (e) => {
     const result = await vouch.validate(email);
 
     // Show inline feedback
-    if (result.recommendation === 'block') {
+    if (!result.success || !result.data?.checks.syntax?.pass) {
       emailInput.classList.add('error');
       showError('This email cannot be used');
     } else {
@@ -299,25 +271,26 @@ emailInput.addEventListener('input', (e) => {
 });
 ```
 
-### Disposable Email Check Only
+### Check Specific Validations
 
 ```javascript
-const result = await vouch.validate('user@example.com', {
-  validations: {
-    syntax: true,
-    disposable: true,
-    mx: false,
-    smtp: false,
-    catchall: false,
-    roleEmail: false,
-    alias: false,
-    deviceFingerprint: false,
-    ipReputation: false
-  }
-});
+const result = await vouch.validate('user@example.com');
 
-if (!result.signals.disposable.valid) {
-  alert('Temporary emails are not allowed');
+if (result.success && result.data) {
+  const { checks } = result.data;
+
+  // Check specific validations
+  if (!checks.disposable?.pass) {
+    alert('Temporary emails are not allowed');
+  }
+
+  if (!checks.mx?.pass) {
+    alert('Email domain has no mail servers');
+  }
+
+  if (checks.catchall?.pass === false) {
+    console.warn('Domain accepts all emails');
+  }
 }
 ```
 
@@ -327,23 +300,37 @@ if (!result.signals.disposable.valid) {
 try {
   const result = await vouch.validate(email);
 
-  // Handle validation result
-  if (result.recommendation === 'block') {
-    throw new Error('Email blocked');
+  if (!result.success) {
+    console.error('Validation failed:', result.error);
+
+    // Handle specific HTTP status codes
+    if (result.statusCode === 400) {
+      console.error('Invalid email format');
+    } else if (result.statusCode === 401) {
+      console.error('Invalid API key');
+    } else if (result.statusCode === 402) {
+      console.error('Validation quota exceeded');
+    } else if (result.statusCode === 429) {
+      console.error('Too many requests, please retry later');
+    }
+    return;
+  }
+
+  // Check validation results
+  if (result.data) {
+    const { checks, deviceData, ipData } = result.data;
+
+    if (!checks.syntax?.pass) {
+      throw new Error('Invalid email syntax');
+    }
+
+    if (!checks.disposable?.pass) {
+      throw new Error('Disposable email not allowed');
+    }
   }
 
 } catch (error) {
-  if (error.code === 'QUOTA_EXCEEDED') {
-    console.error('Validation quota exceeded');
-  } else if (error.code === 'RATE_LIMITED') {
-    console.error('Too many requests, retry after:', error.retryAfter);
-  } else if (error.code === 'UNAUTHORIZED') {
-    console.error('Invalid API key');
-  } else if (error.code === 'NETWORK_ERROR') {
-    console.error('Network connectivity issue');
-  } else {
-    console.error('Validation error:', error.message);
-  }
+  console.error('Validation error:', error.message);
 }
 ```
 
@@ -355,22 +342,31 @@ try {
 async function validateEmailWithCustomRules(email) {
   const result = await vouch.validate(email);
 
+  if (!result.success || !result.data) {
+    return {
+      valid: false,
+      reason: result.error || 'Validation failed'
+    };
+  }
+
+  const { checks, deviceData, ipData } = result.data;
+
   // Custom business logic
-  if (result.signals.disposable.valid === false) {
+  if (!checks.disposable?.pass) {
     return {
       valid: false,
       reason: 'Disposable emails not allowed'
     };
   }
 
-  if (result.signals.deviceFingerprint.previousEmails > 10) {
+  if (deviceData && deviceData.emailsUsed > 10) {
     return {
       valid: false,
       reason: 'Too many accounts from this device'
     };
   }
 
-  if (result.signals.ipReputation.threats.includes('vpn')) {
+  if (ipData?.isVPN) {
     return {
       valid: 'flag',
       reason: 'VPN detected - requires verification'
@@ -394,8 +390,10 @@ async function validateMultipleEmails(emails) {
 
   return results.map((result, index) => ({
     email: emails[index],
-    recommendation: result.recommendation,
-    signals: result.signals
+    success: result.success,
+    checks: result.data?.checks,
+    deviceData: result.data?.deviceData,
+    error: result.error
   }));
 }
 
@@ -415,17 +413,24 @@ console.log(results);
 ```javascript
 async function validateWithRetry(email, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await vouch.validate(email);
-    } catch (error) {
-      if (error.code === 'RATE_LIMITED' && attempt < maxRetries) {
-        const delay = error.retryAfter * 1000 || 1000 * attempt;
-        console.log(`Rate limited, retrying in ${delay}ms...`);
+    const result = await vouch.validate(email);
+
+    if (result.success) {
+      return result;
+    }
+
+    // Retry on rate limit or server errors
+    if (result.statusCode === 429 || result.statusCode >= 500) {
+      if (attempt < maxRetries) {
+        const delay = 1000 * attempt;
+        console.log(`Retrying in ${delay}ms... (attempt ${attempt}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
-      throw error;
     }
+
+    // Don't retry on client errors (400, 401, etc)
+    return result;
   }
 }
 ```
@@ -435,17 +440,25 @@ async function validateWithRetry(email, maxRetries = 3) {
 The SDK is written in TypeScript and includes full type definitions:
 
 ```typescript
-import { Vouch, ValidationResult, ValidationSignal } from '@vouch/js';
+import { Vouch, ValidationResponse, CheckResult, DeviceData } from '@vouch/js';
 
 const vouch = new Vouch(projectId, apiKey);
 
-const result: ValidationResult = await vouch.validate('user@example.com');
+const result: ValidationResponse = await vouch.validate('user@example.com');
 
-// Type-safe signal access
-const disposable: ValidationSignal = result.signals.disposable;
+if (result.success && result.data) {
+  // Type-safe access to validation results
+  const { checks, deviceData, ipData } = result.data;
 
-if (!disposable.valid) {
-  console.log('Disposable email detected');
+  const disposableCheck: CheckResult | undefined = checks.disposable;
+
+  if (disposableCheck && !disposableCheck.pass) {
+    console.log('Disposable email detected');
+  }
+
+  if (deviceData && deviceData.emailsUsed > 5) {
+    console.log('Multiple emails from this device');
+  }
 }
 ```
 
@@ -529,7 +542,12 @@ export default {
       try {
         const result = await vouch.validate(this.email);
 
-        if (result.recommendation === 'block') {
+        if (!result.success || !result.data) {
+          this.error = result.error || 'This email cannot be used';
+          return;
+        }
+
+        if (!result.data.checks.syntax?.pass || !result.data.checks.disposable?.pass) {
           this.error = 'This email cannot be used';
           return;
         }
@@ -566,7 +584,12 @@ export default {
     try {
       const result = await vouch.validate(email);
 
-      if (result.recommendation === 'block') {
+      if (!result.success || !result.data) {
+        error = result.error || 'This email cannot be used';
+        return;
+      }
+
+      if (!result.data.checks.syntax?.pass || !result.data.checks.disposable?.pass) {
         error = 'This email cannot be used';
         return;
       }
