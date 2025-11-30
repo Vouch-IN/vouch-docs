@@ -40,22 +40,19 @@ The `/validate` endpoint is the core of Vouch's API. It performs comprehensive e
   ```
 </ParamField>
 
-<ParamField body="fingerprint" type="object">
-  Device fingerprint data for client-side validation. The API extracts `fingerprint.hash` for device tracking.
+<ParamField body="fingerprintHash" type="string">
+  Device fingerprint hash for client-side validation and device tracking.
 
   ```json
-  {
-    "hash": "abc123def456...",
-    "canvas": "...",
-    "cpuCores": 8,
-    "deviceMemory": 8,
-    "fonts": ["Arial", "Helvetica"],
-    "screen": "1920x1080",
-    "timezone": "America/New_York",
-    "touchSupport": false,
-    "userAgent": "Mozilla/5.0...",
-    "webgl": "..."
-  }
+  "abc123def456789..."
+  ```
+</ParamField>
+
+<ParamField body="version" type="string">
+  SDK version identifier (automatically included by SDKs)
+
+  ```json
+  "1.0.0"
   ```
 </ParamField>
 
@@ -103,20 +100,8 @@ The SDKs automatically construct the request body. When using the API directly, 
 
 ## Response
 
-<ResponseField name="success" type="boolean" required>
-  Whether the validation completed successfully
-</ResponseField>
-
-<ResponseField name="error" type="string">
-  Error message if validation failed
-</ResponseField>
-
-<ResponseField name="data" type="object">
-  Validation result data (present when success is true)
-
-  <Expandable title="ValidationResult">
-    <ResponseField name="checks" type="object" required>
-      Individual validation check results. Each check contains:
+<ResponseField name="checks" type="object" required>
+  Individual validation check results. Each check contains:
 
       <Expandable title="CheckResult Structure">
         <ResponseField name="pass" type="boolean">
@@ -133,58 +118,31 @@ The SDKs automatically construct the request body. When using the API directly, 
         </ResponseField>
       </Expandable>
 
-      Available checks include: `syntax`, `disposable`, `mx`, `smtp`, `catchall`, `roleEmail`, `alias`, `deviceFingerprint`, `ipReputation`
+  Available checks include: `syntax`, `disposable`, `mx`, `roleEmail`, `alias`, `device`, `ip`
+</ResponseField>
+
+<ResponseField name="metadata" type="object" required>
+  Validation metadata
+
+  <Expandable title="Metadata">
+    <ResponseField name="fingerprintHash" type="string | null">
+      Device fingerprint hash (null if no fingerprint provided)
     </ResponseField>
-
-    <ResponseField name="deviceData" type="object | null">
-      Device fingerprint information
-
-      <Expandable title="DeviceData">
-        <ResponseField name="isKnownDevice" type="boolean">
-          Whether this device has been seen before
-        </ResponseField>
-        <ResponseField name="isNewEmail" type="boolean">
-          Whether this email is new for this device
-        </ResponseField>
-        <ResponseField name="emailsUsed" type="number">
-          Number of different emails used from this device
-        </ResponseField>
-        <ResponseField name="previousSignups" type="number">
-          Number of previous signups from this device
-        </ResponseField>
-        <ResponseField name="firstSeen" type="number">
-          Unix timestamp when device was first seen
-        </ResponseField>
-        <ResponseField name="lastSeen" type="number">
-          Unix timestamp when device was last seen
-        </ResponseField>
-      </Expandable>
+    <ResponseField name="previousSignups" type="number">
+      Number of previous signups from this device
     </ResponseField>
-
-    <ResponseField name="ipData" type="object | null">
-      IP reputation information
-
-      <Expandable title="IPData">
-        <ResponseField name="ip" type="string">
-          IP address analyzed
-        </ResponseField>
-        <ResponseField name="isVPN" type="boolean">
-          Whether IP is from VPN/proxy
-        </ResponseField>
-        <ResponseField name="isFraud" type="boolean">
-          Whether IP has fraud indicators
-        </ResponseField>
-      </Expandable>
-    </ResponseField>
-
-    <ResponseField name="signals" type="array">
-      Array of signal identifiers detected during validation
+    <ResponseField name="totalLatency" type="number">
+      Total validation time in milliseconds
     </ResponseField>
   </Expandable>
 </ResponseField>
 
-<ResponseField name="statusCode" type="number">
-  HTTP status code
+<ResponseField name="recommendation" type="string" required>
+  Overall recommendation based on all checks: `allow`, `flag`, or `block`
+</ResponseField>
+
+<ResponseField name="signals" type="array" required>
+  Array of signal identifiers detected during validation (e.g., `["disposable_email", "vpn_detected"]`)
 </ResponseField>
 
 ## Example Request
@@ -281,97 +239,119 @@ func main() {
 
 ```json
 {
-  "success": true,
-  "statusCode": 200,
-  "data": {
-    "checks": {
-      "syntax": {
-        "pass": true,
-        "latency": 2,
-        "metadata": {
-          "format": "valid"
-        }
-      },
-      "disposable": {
-        "pass": true,
-        "latency": 15,
-        "metadata": {
-          "isDisposable": false
-        }
-      },
-      "mx": {
-        "pass": true,
-        "latency": 45,
-        "metadata": {
-          "records": ["mx1.example.com", "mx2.example.com"]
-        }
-      },
-      "smtp": {
-        "pass": true,
-        "latency": 120,
-        "metadata": {
-          "response": "250 OK"
-        }
-      }
+  "checks": {
+    "syntax": {
+      "pass": true,
+      "latency": 0.8
     },
-    "deviceData": {
-      "isKnownDevice": false,
-      "isNewEmail": true,
-      "emailsUsed": 1,
-      "previousSignups": 0,
-      "firstSeen": 1699564800000,
-      "lastSeen": 1699564800000
+    "disposable": {
+      "pass": true,
+      "latency": 12.3
     },
-    "ipData": {
-      "ip": "192.168.1.1",
-      "isVPN": false,
-      "isFraud": false
+    "mx": {
+      "pass": true,
+      "latency": 45.2
     },
-    "signals": ["new_device", "valid_email"]
-  }
+    "roleEmail": {
+      "pass": true,
+      "latency": 0.5
+    },
+    "alias": {
+      "pass": true,
+      "latency": 0.3
+    },
+    "device": {
+      "pass": true,
+      "latency": 15.7
+    },
+    "ip": {
+      "pass": true,
+      "latency": 8.4
+    }
+  },
+  "metadata": {
+    "fingerprintHash": "abc123def456789",
+    "previousSignups": 0,
+    "totalLatency": 83.2
+  },
+  "recommendation": "allow",
+  "signals": []
+}
+```
+
+### Example with Signals
+
+```json
+{
+  "checks": {
+    "syntax": {
+      "pass": true,
+      "latency": 0.8
+    },
+    "disposable": {
+      "pass": false,
+      "latency": 12.3
+    },
+    "mx": {
+      "pass": true,
+      "latency": 45.2
+    },
+    "device": {
+      "pass": false,
+      "latency": 15.7
+    },
+    "ip": {
+      "pass": false,
+      "latency": 8.4
+    }
+  },
+  "metadata": {
+    "fingerprintHash": "abc123def456789",
+    "previousSignups": 3,
+    "totalLatency": 82.4
+  },
+  "recommendation": "block",
+  "signals": [
+    "disposable_email",
+    "device_reuse",
+    "device_seen_3_times",
+    "vpn_detected"
+  ]
 }
 ```
 
 ## Error Responses
 
+All errors return an error object with HTTP status codes.
+
 <ResponseExample>
 ```json 400 - Invalid Request
 {
-  "success": false,
-  "error": "Invalid email format",
-  "statusCode": 400
+  "error": "Invalid email format"
 }
 ```
 
 ```json 401 - Unauthorized
 {
-  "success": false,
-  "error": "Invalid API key",
-  "statusCode": 401
+  "error": "Invalid API key"
 }
 ```
 
 ```json 402 - Quota Exceeded
 {
-  "success": false,
-  "error": "Monthly validation quota exceeded",
-  "statusCode": 402
+  "error": "Monthly validation quota exceeded"
 }
 ```
 
 ```json 429 - Rate Limited
 {
-  "success": false,
-  "error": "Too many requests",
-  "statusCode": 429
+  "error": "Too many requests"
 }
 ```
 
 ```json 500 - Server Error
 {
-  "success": false,
-  "error": "An internal error occurred",
-  "statusCode": 500
+  "error": "An internal error occurred"
 }
 ```
 </ResponseExample>

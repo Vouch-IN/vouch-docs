@@ -32,7 +32,7 @@ Device fingerprints are built from browser and hardware signals:
     }
   },
   "metadata": {
-    "fingerprintId": "abc123def456",
+    "fingerprintHash": "abc123def456",
     "previousSignups": 0
   }
 }
@@ -49,7 +49,7 @@ When device reuse is detected:
     }
   },
   "metadata": {
-    "fingerprintId": "abc123def456",
+    "fingerprintHash": "abc123def456",
     "previousSignups": 3
   },
   "signals": ["device_reuse", "device_seen_3_times"]
@@ -64,8 +64,8 @@ When device reuse is detected:
   Check execution time in milliseconds
 </ParamField>
 
-<ParamField path="metadata.fingerprintId" type="string">
-  Unique device identifier
+<ParamField path="metadata.fingerprintHash" type="string">
+  Unique device fingerprint hash
 </ParamField>
 
 <ParamField path="metadata.previousSignups" type="number">
