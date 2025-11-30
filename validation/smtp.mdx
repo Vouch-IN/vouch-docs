@@ -3,6 +3,10 @@ title: 'SMTP Verification'
 description: 'Verify mailbox existence without sending email'
 ---
 
+<Info>
+  **Coming Soon** - SMTP verification is currently in development and will be available in a future release.
+</Info>
+
 ## Overview
 
 SMTP (Simple Mail Transfer Protocol) verification checks if a specific email mailbox actually exists by connecting to the mail server and simulating the delivery process without sending an actual email. This is the most definitive way to verify email deliverability.
@@ -35,62 +39,6 @@ SMTP verification simulates sending an email to verify the mailbox exists:
     Close connection before actually sending data
   </Step>
 </Steps>
-
-### SMTP Dialog Example
-
-```smtp
-Client: EHLO vouch.expert
-Server: 250-mx.example.com Hello vouch.expert
-Server: 250 SIZE 52428800
-
-Client: MAIL FROM:<verify@vouch.expert>
-Server: 250 OK
-
-Client: RCPT TO:<user@example.com>
-Server: 250 OK                     # Mailbox exists ✓
-# OR
-Server: 550 No such user           # Mailbox doesn't exist ✗
-
-Client: QUIT
-Server: 221 Bye
-```
-
-## Validation Response
-
-### Mailbox Exists
-
-```json
-{
-  "smtp": {
-    "valid": true,
-    "action": "flag",
-    "message": "Mailbox exists",
-    "responseCode": 250,
-    "responseText": "OK",
-    "server": "mx1.example.com"
-  }
-}
-```
-
-### Mailbox Doesn't Exist
-
-```json
-{
-  "smtp": {
-    "valid": false,
-    "action": "flag",
-    "message": "Mailbox does not exist",
-    "responseCode": 550,
-    "responseText": "5.1.1 No such user"
-  }
-}
-```
-
-## Configuration
-
-<Card title="FLAG" icon="flag" color="#f59e0b">
-  Configure SMTP verification to FLAG rather than BLOCK. Many legitimate emails cannot be verified due to server policies.
-</Card>
 
 ## Next Steps
 

@@ -5,7 +5,7 @@ description: 'RFC 5322 compliant email format validation'
 
 ## Overview
 
-Syntax validation is the most fundamental email check. It ensures the email address follows the proper format defined in RFC 5322 (Internet Message Format) and RFC 5321 (SMTP).
+Syntax validation ensures the email address follows the proper format defined in RFC 5322 (Internet Message Format) and RFC 5321 (SMTP).
 
 <Note>
   This is typically configured as a **BLOCK** check since an email with invalid syntax cannot receive messages.
@@ -30,392 +30,65 @@ Syntax validation verifies these components:
   </Card>
 </CardGroup>
 
-## Valid Email Format
-
-A valid email address follows this structure:
-
-```
-local-part@domain
-```
-
-### Local Part Rules
-
-The local part (before @) can contain:
-
-- Alphanumeric characters: `a-z`, `A-Z`, `0-9`
-- Special characters: `.` `_` `-` `+`
-- Must not start or end with a dot
-- Cannot have consecutive dots
-
-<CodeGroup>
-```text Valid Local Parts
-john.doe
-jane_smith
-user+tag
-john-doe-123
-```
-
-```text Invalid Local Parts
-.john (starts with dot)
-jane. (ends with dot)
-user..name (consecutive dots)
-admin@ (missing domain)
-```
-</CodeGroup>
-
-### Domain Part Rules
-
-The domain part (after @) must:
-
-- Contain at least one dot (e.g., `example.com`)
-- Use valid domain characters: `a-z`, `A-Z`, `0-9`, `-`, `.`
-- Have valid TLD (top-level domain)
-- Not start or end with hyphen or dot
-- Each label max 63 characters
-- Total domain max 253 characters
-
-<CodeGroup>
-```text Valid Domains
-example.com
-mail.company.co.uk
-test-domain.io
-subdomain.example.com
-```
-
-```text Invalid Domains
-example (no TLD)
-.example.com (starts with dot)
-example-.com (hyphen before dot)
--example.com (starts with hyphen)
-```
-</CodeGroup>
-
 ## Common Validation Failures
 
-### Missing Components
+<AccordionGroup>
+  <Accordion title="Missing @ symbol">
+    ```text
+    userexample.com ❌
+    user@example.com ✓
+    ```
+  </Accordion>
 
-<Accordion title="Missing @ symbol">
-```text
-userexample.com ❌
-user@example.com ✓
-```
-No @ separator between local and domain parts.
-</Accordion>
+  <Accordion title="Multiple @ symbols">
+    ```text
+    user@name@example.com ❌
+    user@example.com ✓
+    ```
+  </Accordion>
 
-<Accordion title="Missing domain">
-```text
-user@ ❌
-user@example.com ✓
-```
-Email must have a domain after the @ symbol.
-</Accordion>
+  <Accordion title="Whitespace">
+    ```text
+    user @example.com ❌
+    john doe@example.com ❌
+    user@example.com ✓
+    ```
+  </Accordion>
 
-<Accordion title="Missing local part">
-```text
-@example.com ❌
-user@example.com ✓
-```
-Email must have a username before the @ symbol.
-</Accordion>
+  <Accordion title="Missing TLD">
+    ```text
+    user@example ❌
+    user@example.com ✓
+    ```
+  </Accordion>
+</AccordionGroup>
 
-### Format Errors
-
-<Accordion title="Multiple @ symbols">
-```text
-user@name@example.com ❌
-user@example.com ✓
-```
-Only one @ symbol is allowed.
-</Accordion>
-
-<Accordion title="Whitespace">
-```text
-user @example.com ❌
-john doe@example.com ❌
-user@example.com ✓
-```
-Spaces are not allowed in email addresses.
-</Accordion>
-
-<Accordion title="Invalid characters">
-```text
-user#name@example.com ❌
-user$@example.com ❌
-user@example.com ✓
-```
-Special characters like #, $, %, & are not allowed.
-</Accordion>
-
-### Domain Issues
-
-<Accordion title="Missing TLD">
-```text
-user@example ❌
-user@localhost ❌
-user@example.com ✓
-```
-Domain must include a top-level domain (.com, .org, etc.).
-</Accordion>
-
-<Accordion title="Invalid domain format">
-```text
-user@-example.com ❌
-user@example-.com ❌
-user@example..com ❌
-user@example.com ✓
-```
-Domain cannot start/end with hyphen or have consecutive dots.
-</Accordion>
-
-## Implementation
-
-### How Vouch Validates Syntax
-
-Vouch uses a comprehensive regex pattern combined with additional checks:
-
-```typescript
-// Simplified example of validation logic
-function validateEmailSyntax(email: string): boolean {
-  // Basic format check
-  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
-  if (!emailRegex.test(email)) {
-    return false;
-  }
-
-  // Additional validation
-  const [localPart, domain] = email.split('@');
-
-  // Check local part
-  if (localPart.startsWith('.') || localPart.endsWith('.')) {
-    return false;
-  }
-
-  if (localPart.includes('..')) {
-    return false;
-  }
-
-  // Check domain
-  if (domain.startsWith('.') || domain.endsWith('.')) {
-    return false;
-  }
-
-  if (domain.startsWith('-') || domain.endsWith('-')) {
-    return false;
-  }
-
-  // Length checks
-  if (localPart.length > 64 || domain.length > 253) {
-    return false;
-  }
-
-  return true;
-}
-```
-
-### Response Format
-
-When syntax validation runs, you receive:
+## API Response
 
 ```json
 {
-  "syntax": {
-    "valid": true,
-    "action": "block",
-    "message": "Email format is valid"
-  }
-}
-```
-
-Or for invalid syntax:
-
-```json
-{
-  "syntax": {
-    "valid": false,
-    "action": "block",
-    "message": "Invalid email format: missing @ symbol",
-    "details": {
-      "issue": "MISSING_AT_SYMBOL",
-      "position": null
+  "checks": {
+    "syntax": {
+      "pass": true,
+      "latency": 0.5
     }
   }
 }
 ```
 
-## Edge Cases
+<ParamField path="pass" type="boolean">
+  Whether the email syntax is valid
+</ParamField>
 
-### Internationalized Email
-
-Vouch supports basic internationalized domain names but not internationalized local parts:
-
-```text
-user@münchen.de ✓ (IDN domain converted to punycode)
-müller@example.com ❌ (International local part not supported)
-```
-
-### Plus Addressing
-
-Plus signs in the local part are valid but detected by the **alias** validation:
-
-```text
-user+tag@example.com ✓ (valid syntax)
-# But will trigger alias detection
-```
-
-### Quoted Strings
-
-RFC 5322 allows quoted strings in local parts, but they're rare and not recommended:
-
-```text
-"john doe"@example.com ✓ (technically valid per RFC)
-# Vouch may flag these as unusual
-```
+<ParamField path="latency" type="number">
+  Check execution time in milliseconds
+</ParamField>
 
 ## Configuration
 
-### Recommended Setting
-
 <Card title="BLOCK" icon="ban" color="#ef4444">
-  Always configure syntax validation to BLOCK. An email with invalid syntax cannot receive messages, so there's no legitimate reason to allow it.
+  Always configure syntax validation to BLOCK. An email with invalid syntax cannot receive messages.
 </Card>
-
-### Dashboard Configuration
-
-In your Vouch dashboard:
-
-1. Navigate to **Project Settings**
-2. Select **Validation Configuration**
-3. Find **Syntax Validation**
-4. Set action to **BLOCK** (default)
-
-## User Experience
-
-### Error Messages
-
-Provide clear feedback when syntax validation fails:
-
-<CodeGroup>
-```jsx Good UX
-{result.data && !result.data.checks.syntax?.pass && (
-  <p className="error">
-    Please enter a valid email address
-  </p>
-)}
-```
-
-```jsx Avoid This
-{result.data && !result.data.checks.syntax?.pass && (
-  <p className="error">
-    Invalid email format: missing @ symbol (RFC 5322 violation)
-  </p>
-)}
-```
-</CodeGroup>
-
-Keep error messages user-friendly rather than technical.
-
-### Client-Side Pre-validation
-
-Consider basic client-side validation before calling Vouch:
-
-```javascript
-// Quick client-side check to catch obvious errors
-function isBasicEmailFormat(email) {
-  return email.includes('@') && email.includes('.');
-}
-
-async function handleSignup(email) {
-  // Fast client-side check
-  if (!isBasicEmailFormat(email)) {
-    showError('Please enter a valid email address');
-    return;
-  }
-
-  // Then validate with Vouch for comprehensive checks
-  const result = await vouch.validate(email);
-}
-```
-
-This provides instant feedback for obvious errors while still using Vouch for comprehensive validation.
-
-## Performance
-
-- **Speed:** < 1ms (deterministic regex)
-- **Accuracy:** 100% for RFC 5322 compliance
-- **False positives:** None
-- **False negatives:** None
-
-Syntax validation is nearly instantaneous and never requires network calls.
-
-## Common Questions
-
-<AccordionGroup>
-  <Accordion title="Why does syntax validation fail for seemingly valid emails?">
-    Some emails that look valid may violate RFC standards. Common issues:
-    - Consecutive dots in local part
-    - Special characters not allowed
-    - Missing TLD in domain
-    - Whitespace in address
-  </Accordion>
-
-  <Accordion title="Can I disable syntax validation?">
-    You can set it to ALLOW, but this is not recommended. Invalid syntax emails cannot receive messages, so accepting them will lead to failed email delivery.
-  </Accordion>
-
-  <Accordion title="Does syntax validation check if the email exists?">
-    No. Syntax validation only checks format. Use **MX Records** and **SMTP Validation** to verify if the email can receive messages and if the mailbox exists.
-  </Accordion>
-
-  <Accordion title="Why do some emails with + signs get flagged?">
-    Plus signs are valid syntax, but the **alias detection** validation flags them separately since they can be used to create unlimited email variations from a single address.
-  </Accordion>
-</AccordionGroup>
-
-## Testing
-
-Test syntax validation with various inputs:
-
-<CodeGroup>
-```javascript Valid Emails
-const validEmails = [
-  'user@example.com',
-  'john.doe@company.co.uk',
-  'jane_smith@test-domain.io',
-  'user+tag@example.com',
-  'admin123@sub.example.com'
-];
-
-for (const email of validEmails) {
-  const result = await vouch.validate(email);
-  if (result.data) {
-    console.log(`${email}: ${result.data.checks.syntax?.pass}`);
-    // Should all be true
-  }
-}
-```
-
-```javascript Invalid Emails
-const invalidEmails = [
-  'userexample.com',        // missing @
-  'user@',                   // missing domain
-  '@example.com',            // missing local part
-  'user@@example.com',       // double @
-  'user @example.com',       // whitespace
-  'user@example',            // missing TLD
-  '.user@example.com',       // starts with dot
-  'user..name@example.com'   // consecutive dots
-];
-
-for (const email of invalidEmails) {
-  const result = await vouch.validate(email);
-  if (result.data) {
-    console.log(`${email}: ${result.data.checks.syntax?.pass}`);
-    // Should all be false
-  }
-}
-```
-</CodeGroup>
 
 ## Next Steps
 
@@ -423,13 +96,7 @@ for (const email of invalidEmails) {
   <Card title="MX Records" icon="server" href="/validation/mx-records">
     Verify the domain can receive email
   </Card>
-  <Card title="SMTP Validation" icon="envelope" href="/validation/smtp">
-    Check if the mailbox exists
-  </Card>
   <Card title="Disposable Detection" icon="trash" href="/validation/disposable">
     Block temporary email services
-  </Card>
-  <Card title="Validation Overview" icon="shield" href="/validation/overview">
-    Back to validation overview
   </Card>
 </CardGroup>

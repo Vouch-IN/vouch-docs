@@ -5,161 +5,61 @@ description: 'Detect generic organizational email addresses'
 
 ## Overview
 
-Role email detection identifies generic organizational email addresses like admin@, support@, or info@ that belong to a group or function rather than an individual person. These addresses typically indicate lower engagement and may not be suitable for personal accounts.
+Role email detection identifies generic organizational email addresses like admin@, support@, or info@ that belong to a group or function rather than an individual person.
 
 <Note>
   Typically configured as **ALLOW** or **FLAG** since role emails can be legitimate for business signups.
 </Note>
 
-## What Are Role Emails?
-
-Role emails are addresses associated with a function or role within an organization rather than a specific person:
-
-- `admin@company.com` - Administration
-- `support@company.com` - Customer support
-- `info@company.com` - General inquiries
-- `sales@company.com` - Sales team
-- `noreply@company.com` - Automated systems
-
 ## Common Role Prefixes
 
-<Tabs>
-  <Tab title="Administrative">
-    ```text
-    admin
-    administrator
-    root
-    webmaster
-    postmaster
-    hostmaster
-    ```
-  </Tab>
+- `admin@` - Administration
+- `support@` - Customer support
+- `info@` - General inquiries
+- `sales@` - Sales team
+- `noreply@` - Automated systems
+- `contact@` - Contact forms
 
-  <Tab title="Support & Service">
-    ```text
-    support
-    help
-    service
-    helpdesk
-    customerservice
-    contact
-    ```
-  </Tab>
+## Why Detect Role Emails
 
-  <Tab title="Sales & Marketing">
-    ```text
-    sales
-    marketing
-    info
-    hello
-    inquiries
-    business
-    ```
-  </Tab>
+- **Lower engagement**: Shared inboxes have lower engagement rates
+- **Not personal**: Can't identify a specific individual
+- **Compliance**: Some services require personal email addresses
 
-  <Tab title="Technical">
-    ```text
-    noreply
-    no-reply
-    mailer
-    daemon
-    system
-    automated
-    ```
-  </Tab>
-
-  <Tab title="Departments">
-    ```text
-    hr
-    legal
-    billing
-    accounting
-    finance
-    ```
-  </Tab>
-</Tabs>
-
-## Validation Response
-
-### Role Email Detected
+## API Response
 
 ```json
 {
-  "roleEmail": {
-    "valid": false,
-    "action": "allow",
-    "message": "Role-based email detected",
-    "role": "support",
-    "category": "customer_service",
-    "confidence": "high"
+  "checks": {
+    "roleEmail": {
+      "pass": false,
+      "latency": 0.5
+    }
   }
 }
 ```
 
-### Personal Email
+<ParamField path="pass" type="boolean">
+  `false` if role email detected, `true` if personal email
+</ParamField>
 
-```json
-{
-  "roleEmail": {
-    "valid": true,
-    "action": "allow",
-    "message": "Personal email address"
-  }
-}
-```
-
-## Why It Matters
-
-<CardGroup cols={2}>
-  <Card title="Lower Engagement" icon="chart-line-down">
-    Role emails are often shared or monitored infrequently
-  </Card>
-  <Card title="Multiple Users" icon="users">
-    Several people may access the same inbox
-  </Card>
-  <Card title="Not Personal" icon="user-slash">
-    Doesn't belong to a specific individual
-  </Card>
-  <Card title="May Not Reply" icon="envelope-open">
-    Some addresses like noreply@ cannot receive responses
-  </Card>
-</CardGroup>
-
-## Use Cases
-
-### When to Block Role Emails
-
-- Personal social networks
-- Individual user accounts
-- Services requiring one person per account
-- Identity verification requirements
-
-### When to Allow Role Emails
-
-- B2B SaaS signups
-- Business account creation
-- Team collaboration tools
-- Enterprise software
+<ParamField path="latency" type="number">
+  Check execution time in milliseconds
+</ParamField>
 
 ## Configuration
 
-```json
-{
-  "roleEmail": {
-    "action": "flag",
-    "blockedRoles": ["noreply", "no-reply", "postmaster"],
-    "allowForBusinessDomains": true
-  }
-}
-```
+<Card title="ALLOW" icon="check" color="#10b981">
+  Most applications ALLOW role emails since businesses legitimately use them.
+</Card>
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Alias Detection" icon="at" href="/validation/alias">
-    Detect plus-addressing
+  <Card title="Syntax" icon="code" href="/validation/syntax">
+    Validate email format
   </Card>
-  <Card title="Validation Overview" icon="shield" href="/validation/overview">
-    Back to overview
+  <Card title="Disposable" icon="trash" href="/validation/disposable">
+    Block temporary emails
   </Card>
 </CardGroup>

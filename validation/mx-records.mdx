@@ -5,7 +5,7 @@ description: 'Verify domain mail server configuration'
 
 ## Overview
 
-MX (Mail Exchange) record verification checks whether the email domain has properly configured mail servers in its DNS records. Without valid MX records, a domain cannot receive emails, making the email address invalid regardless of its format.
+MX (Mail Exchange) record verification checks whether the email domain has properly configured mail servers in its DNS records. Without valid MX records, a domain cannot receive emails.
 
 <Note>
   This is typically configured as a **BLOCK** check since emails to domains without MX records will always bounce.
@@ -15,479 +15,58 @@ MX (Mail Exchange) record verification checks whether the email domain has prope
 
 MX records are DNS entries that specify which mail servers handle email for a domain. When someone sends an email to `user@example.com`, the sending server looks up the MX records for `example.com` to find where to deliver the message.
 
-### How MX Records Work
-
-<Steps>
-  <Step title="DNS Lookup">
-    Sending mail server queries DNS for MX records of recipient domain
-  </Step>
-  <Step title="Priority Selection">
-    MX records have priority values (lower = higher priority)
-  </Step>
-  <Step title="Server Connection">
-    Sender connects to highest priority available mail server
-  </Step>
-  <Step title="Email Delivery">
-    Email is delivered to the mail server
-  </Step>
-</Steps>
-
-### Example MX Records
-
-```dns
-example.com.    3600    IN    MX    10 mail.example.com.
-example.com.    3600    IN    MX    20 backup.example.com.
-```
-
-- **10** = Priority (lower numbers are tried first)
-- **mail.example.com** = Mail server hostname
-
-## How Vouch Verifies MX Records
-
-Vouch performs a DNS MX record lookup for the email domain:
-
-```typescript
-// Simplified verification logic
-async function verifyMX(domain: string) {
-  try {
-    // DNS MX lookup
-    const mxRecords = await dns.resolveMx(domain);
-
-    if (mxRecords.length === 0) {
-      return {
-        valid: false,
-        message: "No MX records found"
-      };
-    }
-
-    // Sort by priority (lower = higher priority)
-    mxRecords.sort((a, b) => a.priority - b.priority);
-
-    return {
-      valid: true,
-      records: mxRecords.map(r => r.exchange),
-      priority: mxRecords[0].priority
-    };
-  } catch (error) {
-    return {
-      valid: false,
-      message: "DNS lookup failed"
-    };
-  }
-}
-```
-
-## Validation Response
-
-### Valid MX Records
+## API Response
 
 ```json
 {
-  "mx": {
-    "valid": true,
-    "action": "block",
-    "message": "MX records found",
-    "records": [
-      "mx1.example.com",
-      "mx2.example.com"
-    ],
-    "priorities": [10, 20],
-    "primaryServer": "mx1.example.com"
-  }
-}
-```
-
-### No MX Records
-
-```json
-{
-  "mx": {
-    "valid": false,
-    "action": "block",
-    "message": "No MX records found for domain",
-    "domain": "example.com",
-    "details": {
-      "reason": "NO_MX_RECORDS",
-      "checked": "2024-01-15T10:30:00Z"
+  "checks": {
+    "mx": {
+      "pass": true,
+      "latency": 45.3
     }
   }
 }
 ```
 
-### DNS Error
+For unreachable MX servers:
 
 ```json
 {
-  "mx": {
-    "valid": false,
-    "action": "block",
-    "message": "DNS lookup failed",
-    "domain": "nonexistent.invalid",
-    "details": {
-      "reason": "NXDOMAIN",
-      "error": "Domain does not exist"
+  "checks": {
+    "mx": {
+      "pass": true,
+      "latency": 120.1,
+      "error": "mx_unreachable"
     }
   }
 }
 ```
 
-## Common Failure Reasons
+<ParamField path="pass" type="boolean">
+  Whether the domain has valid MX records
+</ParamField>
 
-<AccordionGroup>
-  <Accordion title="No MX Records" icon="circle-xmark">
-    Domain has no MX records configured in DNS. This is the most common issue for newly registered domains or domains not intended for email.
+<ParamField path="latency" type="number">
+  DNS lookup time in milliseconds
+</ParamField>
 
-    **Common causes:**
-    - Domain just registered, DNS not configured
-    - Domain used only for website, not email
-    - Typo in domain name
-    - Expired domain registration
-  </Accordion>
-
-  <Accordion title="DNS Resolution Failed" icon="server">
-    Unable to query DNS servers for the domain.
-
-    **Common causes:**
-    - Domain doesn't exist (NXDOMAIN)
-    - DNS servers down or unreachable
-    - Network connectivity issues
-    - DNS propagation delay (new domains)
-  </Accordion>
-
-  <Accordion title="Invalid MX Records" icon="triangle-exclamation">
-    MX records exist but point to invalid or non-existent servers.
-
-    **Common causes:**
-    - MX record points to IP address (must be hostname)
-    - Target mail server doesn't exist
-    - Misconfigured DNS
-    - DNS hijacking or tampering
-  </Accordion>
-
-  <Accordion title="A Record Fallback" icon="turn-down">
-    Some domains have no MX records but use A records (IP addresses) for mail. Vouch handles this but it's non-standard.
-
-    **Common causes:**
-    - Legacy configuration
-    - Simple server setup
-    - Misconfiguration
-  </Accordion>
-</AccordionGroup>
-
-## Major Email Providers
-
-Here are MX records for popular email services:
-
-<Tabs>
-  <Tab title="Google Workspace">
-    ```dns
-    ASPMX.L.GOOGLE.COM (priority 1)
-    ALT1.ASPMX.L.GOOGLE.COM (priority 5)
-    ALT2.ASPMX.L.GOOGLE.COM (priority 5)
-    ALT3.ASPMX.L.GOOGLE.COM (priority 10)
-    ALT4.ASPMX.L.GOOGLE.COM (priority 10)
-    ```
-
-    Google provides 5 MX records for redundancy. All @gmail.com and Google Workspace emails use these servers.
-  </Tab>
-
-  <Tab title="Microsoft 365">
-    ```dns
-    {domain}-com.mail.protection.outlook.com (priority 0)
-    ```
-
-    Microsoft 365 (Office 365) uses a single MX record with a specific format including your domain name.
-  </Tab>
-
-  <Tab title="ProtonMail">
-    ```dns
-    mail.protonmail.ch (priority 10)
-    mailsec.protonmail.ch (priority 20)
-    ```
-
-    ProtonMail uses two MX records for redundancy.
-  </Tab>
-
-  <Tab title="Zoho Mail">
-    ```dns
-    mx.zoho.com (priority 10)
-    mx2.zoho.com (priority 20)
-    mx3.zoho.com (priority 50)
-    ```
-
-    Zoho provides three MX records with different priorities.
-  </Tab>
-
-  <Tab title="iCloud Mail">
-    ```dns
-    mx01.mail.icloud.com (priority 10)
-    mx02.mail.icloud.com (priority 10)
-    ```
-
-    Apple iCloud uses two equal-priority MX records.
-  </Tab>
-</Tabs>
-
-## Special Cases
-
-### Gmail vs Google Workspace
-
-Both use the same MX records, so you can't distinguish consumer Gmail from business Google Workspace based on MX records alone:
-
-```typescript
-// Both use same MX records
-user@gmail.com → ASPMX.L.GOOGLE.COM
-user@company.com (Google Workspace) → ASPMX.L.GOOGLE.COM
-```
-
-### Free Email Providers
-
-Common free email provider MX patterns:
-
-| Provider | MX Pattern | Example |
-|----------|------------|---------|
-| Gmail | aspmx.l.google.com | user@gmail.com |
-| Outlook/Hotmail | outlook-com.olc.protection.outlook.com | user@outlook.com |
-| Yahoo | mta5.am0.yahoodns.net | user@yahoo.com |
-| iCloud | mx01.mail.icloud.com | user@icloud.com |
-| ProtonMail | mail.protonmail.ch | user@protonmail.com |
-
-### Custom Domains
-
-Many businesses use email providers with their own domain:
-
-```dns
-# Company uses Google Workspace with custom domain
-company.com    MX    1    ASPMX.L.GOOGLE.COM
-
-# Email: user@company.com
-# But MX points to Google's servers
-```
-
-## Performance
-
-- **Average lookup time:** 50-200ms
-- **Cache duration:** 5 minutes (TTL dependent)
-- **Timeout:** 5 seconds max
-- **Retries:** 2 attempts on failure
+<ParamField path="error" type="string">
+  Optional error code (e.g., `mx_unreachable` if DNS lookup fails)
+</ParamField>
 
 ## Configuration
 
-### Recommended Setting
-
 <Card title="BLOCK" icon="ban" color="#ef4444">
-  Always configure MX validation to BLOCK. Without valid MX records, emails cannot be delivered, so there's no reason to accept such addresses.
+  Always BLOCK emails to domains without MX records - they cannot receive email.
 </Card>
-
-### Dashboard Settings
-
-```json
-{
-  "mx": {
-    "action": "block",
-    "timeout": 5000,
-    "checkARecord": true,
-    "cacheResults": true,
-    "cacheTTL": 300000
-  }
-}
-```
-
-<ParamField path="timeout" type="number">
-  Maximum time in milliseconds to wait for DNS response (default: 5000)
-</ParamField>
-
-<ParamField path="checkARecord" type="boolean">
-  Fall back to A record if no MX records found (default: true)
-</ParamField>
-
-<ParamField path="cacheResults" type="boolean">
-  Cache DNS lookups to improve performance (default: true)
-</ParamField>
-
-<ParamField path="cacheTTL" type="number">
-  Cache duration in milliseconds (default: 300000 = 5 minutes)
-</ParamField>
-
-## User Experience
-
-### Error Messages
-
-Provide helpful guidance when MX validation fails:
-
-<CodeGroup>
-```jsx Good UX
-{result.data && !result.data.checks.mx?.pass && (
-  <Alert variant="error">
-    <p>This email domain cannot receive messages.</p>
-    <p className="text-sm text-gray-600">
-      Please check for typos or use a different email address.
-    </p>
-  </Alert>
-)}
-```
-
-```jsx Domain-Specific Help
-{result.data && !result.data.checks.mx?.pass && (
-  <Alert variant="error">
-    <p>We couldn't verify {domain}.</p>
-    <p className="text-sm">
-      Common issues:
-    </p>
-    <ul className="text-sm">
-      <li>Check spelling: Did you mean {suggestDomain(domain)}?</li>
-      <li>Use a major provider like Gmail or Outlook</li>
-      <li>Contact your IT team if this is a work email</li>
-    </ul>
-  </Alert>
-)}
-```
-</CodeGroup>
-
-### Domain Suggestions
-
-Implement typo detection for common mistakes:
-
-```javascript
-function suggestDomain(domain) {
-  const suggestions = {
-    'gmial.com': 'gmail.com',
-    'gmai.com': 'gmail.com',
-    'yahooo.com': 'yahoo.com',
-    'hotmial.com': 'hotmail.com',
-    'outlok.com': 'outlook.com'
-  };
-
-  return suggestions[domain.toLowerCase()] || null;
-}
-
-// Usage
-const domain = email.split('@')[1];
-if (result.data && !result.data.checks.mx?.pass) {
-  const suggestion = suggestDomain(domain);
-  if (suggestion) {
-    showError(`Did you mean ${email.replace(domain, suggestion)}?`);
-  }
-}
-```
-
-## Testing
-
-### Test MX Verification
-
-<CodeGroup>
-```javascript Valid Domains
-const validDomains = [
-  'user@gmail.com',        // Google
-  'user@outlook.com',      // Microsoft
-  'user@yahoo.com',        // Yahoo
-  'user@company.com',      // Custom (if configured)
-  'user@protonmail.com'    // ProtonMail
-];
-
-for (const email of validDomains) {
-  const result = await vouch.validate(email);
-  if (result.data) {
-    console.log(`${email}: MX valid = ${result.data.checks.mx?.pass}`);
-    console.log(`  Servers: ${result.data.checks.mx?.metadata?.records?.join(', ')}`);
-  }
-}
-```
-
-```javascript Invalid Domains
-const invalidDomains = [
-  'user@nonexistent-domain-123.com',  // Domain doesn't exist
-  'user@example.invalid',              // Invalid TLD
-  'user@localhost',                    // No MX records
-  'user@192.168.1.1'                   // IP address
-];
-
-for (const email of invalidDomains) {
-  const result = await vouch.validate(email);
-  if (result.data) {
-    console.log(`${email}: MX valid = ${result.data.checks.mx?.pass}`);
-    console.log(`  Reason: ${result.data.checks.mx?.error}`);
-  }
-}
-```
-</CodeGroup>
-
-## Analytics
-
-Track MX validation patterns:
-
-- **Failure rate:** Percentage of emails with invalid MX
-- **Top failing domains:** Which domains most commonly fail
-- **DNS errors:** Track DNS resolution issues
-- **Provider distribution:** Which email providers your users prefer
-
-## Combining with Other Checks
-
-MX verification works best when combined with other validations:
-
-```javascript
-// Typical validation flow
-const result = await vouch.validate(email);
-
-if (!result.success || !result.data) {
-  return "Validation failed";
-}
-
-if (!result.data.checks.syntax?.pass) {
-  return "Invalid email format";
-}
-
-if (!result.data.checks.mx?.pass) {
-  return "Domain cannot receive email";
-}
-
-if (!result.data.checks.smtp?.pass) {
-  return "Mailbox does not exist";
-}
-
-// Email is deliverable
-return "Valid email";
-```
-
-## Common Questions
-
-<AccordionGroup>
-  <Accordion title="Why does MX validation sometimes timeout?">
-    DNS lookups can be slow or fail due to:
-    - Network latency
-    - DNS server overload
-    - Firewall blocking DNS queries
-    - Rate limiting by DNS servers
-
-    Vouch has a 5-second timeout and retries once before failing.
-  </Accordion>
-
-  <Accordion title="Can MX records change?">
-    Yes. Companies may change email providers, which changes their MX records. Vouch caches results for 5 minutes and then re-checks.
-  </Accordion>
-
-  <Accordion title="What about domains with only A records?">
-    Some domains use A records (IP addresses) instead of MX records for mail. This is non-standard but Vouch supports it with the `checkARecord` option.
-  </Accordion>
-
-  <Accordion title="Does MX validation guarantee email delivery?">
-    No. MX validation only confirms that mail servers are configured. The mailbox might still not exist (use SMTP validation) or be full, and emails could still be filtered as spam.
-  </Accordion>
-</AccordionGroup>
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="SMTP Validation" icon="envelope" href="/validation/smtp">
-    Verify the mailbox actually exists
+  <Card title="Syntax" icon="code" href="/validation/syntax">
+    Validate email format
   </Card>
-  <Card title="Syntax Validation" icon="code" href="/validation/syntax">
-    Understand email format checking
-  </Card>
-  <Card title="Disposable Detection" icon="trash" href="/validation/disposable">
-    Block temporary email services
-  </Card>
-  <Card title="Validation Overview" icon="shield" href="/validation/overview">
-    Back to validation overview
+  <Card title="Disposable" icon="trash" href="/validation/disposable">
+    Block temporary emails
   </Card>
 </CardGroup>

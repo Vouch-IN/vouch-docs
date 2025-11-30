@@ -5,472 +5,73 @@ description: 'Detect and block temporary email services'
 
 ## Overview
 
-Disposable email detection identifies temporary email services that users employ to avoid providing their real email address. These services offer short-lived inboxes that require no registration and are commonly used for spam, fraud, or avoiding long-term commitment.
-
-<Warning>
-  Disposable emails are a major indicator of low-quality signups and should typically be blocked.
-</Warning>
-
-## What Are Disposable Emails?
-
-Disposable email services (also called temporary email, throwaway email, or DEA) provide instant, temporary email addresses that expire after a set time period.
-
-### Popular Services
-
-<CardGroup cols={3}>
-  <Card title="Mailinator" icon="envelope">
-    Public inboxes, no registration
-  </Card>
-  <Card title="10 Minute Mail" icon="clock">
-    10-minute expiring addresses
-  </Card>
-  <Card title="Guerrilla Mail" icon="bomb">
-    1-hour temporary emails
-  </Card>
-  <Card title="TempMail" icon="trash">
-    Random temporary addresses
-  </Card>
-  <Card title="Maildrop" icon="droplet">
-    Disposable forwarding
-  </Card>
-  <Card title="ThrowAwayMail" icon="recycle">
-    Temporary burner emails
-  </Card>
-</CardGroup>
-
-### Why Users Use Them
-
-<AccordionGroup>
-  <Accordion title="Avoiding Spam" icon="shield">
-    Users worried about receiving spam use disposable emails for untrusted websites.
-  </Accordion>
-
-  <Accordion title="Bypassing Registration" icon="user-slash">
-    Access gated content without creating a real account.
-  </Accordion>
-
-  <Accordion title="Creating Multiple Accounts" icon="users">
-    Circumvent "one account per email" restrictions for fraud, referral abuse, or trial extensions.
-  </Accordion>
-
-  <Accordion title="Testing" icon="flask">
-    Developers testing email functionality (legitimate use case).
-  </Accordion>
-
-  <Accordion title="Privacy Concerns" icon="eye-slash">
-    Privacy-focused users avoiding tracking.
-  </Accordion>
-</AccordionGroup>
-
-## How Detection Works
-
-### Database Lookup
-
-Vouch maintains a comprehensive database of 5,000+ known disposable email domains:
-
-```typescript
-// Simplified detection logic
-async function isDisposable(email: string): Promise<boolean> {
-  const domain = email.split('@')[1].toLowerCase();
-
-  // Check against database
-  const isInDatabase = await disposableDomains.includes(domain);
-
-  // Check against patterns
-  const matchesPattern = /^(temp|disposable|throwaway|fake)mail/i.test(domain);
-
-  return isInDatabase || matchesPattern;
-}
-```
-
-### Pattern Recognition
-
-Beyond the database, Vouch uses pattern matching to detect new or unknown services:
-
-- Domains containing "temp", "disposable", "trash", "throw"
-- Randomly generated domain names
-- Suspicious TLDs (.tk, .ml, .ga)
-- Domain age and registration patterns
-
-### Database Updates
-
-The disposable email database is updated regularly:
-
-- **Daily updates** from community sources
-- **Automatic detection** of new services
-- **Manual curation** of reported domains
-- **False positive removal** when legitimate services are flagged
-
-## Detection Response
-
-### Valid Email (Not Disposable)
-
-```json
-{
-  "success": true,
-  "statusCode": 200,
-  "data": {
-    "checks": {
-      "disposable": {
-        "pass": true,
-        "latency": 15,
-        "metadata": {
-          "isDisposable": false
-        }
-      }
-    },
-    "deviceData": null,
-    "ipData": null,
-    "signals": []
-  }
-}
-```
-
-### Disposable Email Detected
-
-```json
-{
-  "success": true,
-  "statusCode": 200,
-  "data": {
-    "checks": {
-      "disposable": {
-        "pass": false,
-        "latency": 15,
-        "metadata": {
-          "domain": "mailinator.com",
-          "service": "Mailinator",
-          "isDisposable": true,
-          "type": "temporary",
-          "confidence": "high"
-        }
-      }
-    },
-    "deviceData": null,
-    "ipData": null,
-    "signals": ["disposable_email"]
-  }
-}
-```
-
-## Common Disposable Domains
-
-Here's a sample of frequently detected domains:
-
-<Tabs>
-  <Tab title="Most Common">
-    ```text
-    mailinator.com
-    guerrillamail.com
-    10minutemail.com
-    tempmail.com
-    throwaway.email
-    maildrop.cc
-    yopmail.com
-    temp-mail.org
-    getnada.com
-    sharklasers.com
-    ```
-  </Tab>
-
-  <Tab title="Privacy-Focused">
-    ```text
-    simplelogin.com (has premium tier)
-    anonaddy.com (has premium tier)
-    relay.firefox.com (Mozilla service)
-    hide.my (Apple feature)
-    duck.com (DuckDuckGo)
-    ```
-  </Tab>
-
-  <Tab title="Developer Testing">
-    ```text
-    mailtrap.io
-    ethereal.email
-    mailsac.com
-    mail7.io
-    fakeinbox.com
-    ```
-  </Tab>
-</Tabs>
+Disposable email detection identifies temporary email services like Mailinator, Guerrilla Mail, or 10minutemail that are commonly used for spam, fraud, or avoiding long-term commitment.
 
 <Note>
-  Some privacy-focused email services like SimpleLogin or Firefox Relay may be flagged as disposable. Consider allowing these if your users value privacy.
+  This is typically configured as a **BLOCK** check to prevent fake signups and fraud.
 </Note>
 
-## Configuration Options
-
-### Recommended Setting
-
-<Card title="BLOCK" icon="ban" color="#ef4444">
-  For most applications, disposable emails should be blocked. They indicate users who don't want to provide real contact information.
-</Card>
-
-### Alternative Settings
-
-<Tabs>
-  <Tab title="BLOCK (Strict)">
-    **Best for:** SaaS, marketplaces, social networks
-
-    Reject all disposable emails immediately. Highest security, may frustrate privacy-conscious users.
-
-    ```json
-    {
-      "disposable": {
-        "action": "block",
-        "allowPrivacyServices": false
-      }
-    }
-    ```
-  </Tab>
-
-  <Tab title="FLAG (Moderate)">
-    **Best for:** Content sites, newsletters, low-risk signups
-
-    Allow signup but mark for review or reduced privileges.
-
-    ```json
-    {
-      "disposable": {
-        "action": "flag",
-        "allowPrivacyServices": true
-      }
-    }
-    ```
-  </Tab>
-
-  <Tab title="ALLOW (Permissive)">
-    **Best for:** Developer tools, testing services
-
-    Track disposable emails but don't restrict them.
-
-    ```json
-    {
-      "disposable": {
-        "action": "allow",
-        "trackOnly": true
-      }
-    }
-    ```
-  </Tab>
-</Tabs>
-
-## Privacy Email Services
-
-Some services blur the line between disposable emails and legitimate privacy tools:
-
-| Service | Type | Recommendation |
-|---------|------|----------------|
-| SimpleLogin | Email aliasing with premium tier | Consider allowing |
-| AnonAddy | Email forwarding, can be permanent | Consider allowing |
-| Firefox Relay | Mozilla email masking | Consider allowing |
-| Apple Hide My Email | Apple privacy feature | Consider allowing |
-| DuckDuckGo Email | Privacy-focused forwarding | Consider allowing |
-| Mailinator | Pure temporary email | Always block |
-| 10minutemail | Expires after 10 minutes | Always block |
-| Guerrilla Mail | Temporary inbox | Always block |
-
-<Note>
-  Configure your Vouch project to whitelist privacy-focused services if they align with your user base.
-</Note>
-
-## User Experience
-
-### Handling Blocked Disposable Emails
-
-Provide clear, helpful error messages:
-
-<CodeGroup>
-```jsx Good UX
-{result.success && result.data && !result.data.checks.disposable?.pass && (
-  <Alert variant="error">
-    <p>Please use a permanent email address.</p>
-    <p className="text-sm">
-      Temporary email services are not allowed.
-      Use your personal or work email instead.
-    </p>
-  </Alert>
-)}
-```
-
-```jsx Avoid This
-{result.success && result.data && !result.data.checks.disposable?.pass && (
-  <p>Error: Disposable email detected (
-    {result.data.checks.disposable.metadata?.domain}
-  )</p>
-)}
-```
-</CodeGroup>
-
-### Alternative Solutions
-
-Offer alternatives for privacy-conscious users:
-
-```jsx
-{result.success && result.data && !result.data.checks.disposable?.pass && (
-  <Alert variant="warning">
-    <p>Temporary email detected. We need a permanent address to:</p>
-    <ul>
-      <li>Send account recovery information</li>
-      <li>Provide important updates</li>
-      <li>Verify your identity</li>
-    </ul>
-    <p className="text-sm">
-      Privacy tip: Create a dedicated email for services like ours,
-      or use privacy services like Apple Hide My Email or Firefox Relay.
-    </p>
-  </Alert>
-)}
-```
-
-## Business Impact
-
-### Why Block Disposable Emails?
+## Why Block Disposable Emails
 
 <CardGroup cols={2}>
-  <Card title="Reduce Fraud" icon="shield-halved">
-    80%+ of fraudulent signups use disposable emails
+  <Card title="Fraud Prevention" icon="shield">
+    Disposable emails are commonly used for fraudulent signups
   </Card>
-  <Card title="Improve Email Deliverability" icon="paper-plane">
-    Lower bounce rates and spam complaints
+  <Card title="Data Quality" icon="database">
+    Temporary addresses can't be used for customer communication
   </Card>
-  <Card title="Higher Engagement" icon="chart-line">
-    Users with real emails are 5x more likely to return
+  <Card title="Engagement" icon="chart-line">
+    Users with disposable emails rarely engage with your product
   </Card>
-  <Card title="Prevent Abuse" icon="ban">
-    Stop referral fraud and multi-account abuse
+  <Card title="Account Abuse" icon="ban">
+    Often used to create multiple accounts or abuse free trials
   </Card>
 </CardGroup>
 
-### The Cost of Allowing Disposables
+## Common Disposable Providers
 
-- **Support burden:** Users can't recover accounts
-- **Wasted resources:** Emails never reach real users
-- **Skewed analytics:** Fake users distort metrics
-- **Referral abuse:** Exploit referral programs
-- **Trial abuse:** Unlimited free trial extensions
+- Mailinator
+- Guerrilla Mail
+- 10minutemail
+- TempMail
+- ThrowAwayMail
+- And 5,000+ more domains
 
-## Testing
+## API Response
 
-Test your disposable email detection:
-
-<CodeGroup>
-```javascript Known Disposable
-const disposableEmails = [
-  'test@mailinator.com',
-  'user@guerrillamail.com',
-  'demo@10minutemail.com',
-  'fake@throwaway.email',
-  'temp@tempmail.com'
-];
-
-for (const email of disposableEmails) {
-  const result = await vouch.validate(email);
-  const isDisposable = result.success && result.data && !result.data.checks.disposable?.pass;
-  console.log(`${email}: disposable = ${isDisposable}`);
-  // All should be detected as disposable
-}
-```
-
-```javascript Legitimate Emails
-const legitimateEmails = [
-  'user@gmail.com',
-  'contact@company.com',
-  'person@university.edu',
-  'admin@business.co.uk'
-];
-
-for (const email of legitimateEmails) {
-  const result = await vouch.validate(email);
-  const isDisposable = result.success && result.data && !result.data.checks.disposable?.pass;
-  console.log(`${email}: disposable = ${isDisposable}`);
-  // None should be flagged as disposable
-}
-```
-</CodeGroup>
-
-## Analytics
-
-Track disposable email attempts in your Vouch dashboard:
-
-- **Detection rate:** Percentage of validations that are disposable
-- **Top services:** Which disposable services are most common
-- **Trend analysis:** Are disposable attempts increasing?
-- **Geographic patterns:** Where are disposable emails coming from?
-
-## Whitelisting
-
-If you need to allow specific domains:
-
-```javascript
-// Dashboard configuration
+```json
 {
-  "disposable": {
-    "action": "block",
-    "whitelist": [
-      "simplelogin.com",
-      "relay.firefox.com",
-      "icloud.com" // Apple Hide My Email uses @icloud.com addresses
-    ]
-  }
+  "checks": {
+    "disposable": {
+      "pass": false,
+      "latency": 1.2
+    }
+  },
+  "signals": ["disposable_email"]
 }
 ```
 
-## API Integration
+<ParamField path="pass" type="boolean">
+  `false` if disposable email detected, `true` if permanent email
+</ParamField>
 
-### Checking Only Disposable
+<ParamField path="latency" type="number">
+  Check execution time in milliseconds
+</ParamField>
 
-Vouch automatically runs all enabled checks. You can check specific validation results:
+## Configuration
 
-```javascript
-const result = await vouch.validate('user@example.com');
-
-if (result.success && result.data) {
-  const { checks } = result.data;
-
-  if (!checks.disposable?.pass) {
-    console.log('Disposable email detected!');
-    console.log('Domain:', checks.disposable.metadata?.domain);
-    console.log('Service:', checks.disposable.metadata?.service);
-  } else {
-    console.log('Email is not disposable');
-  }
-}
-```
-
-## Common Questions
-
-<AccordionGroup>
-  <Accordion title="What if a legitimate service gets flagged?">
-    Report it to Vouch support and add it to your project whitelist while we investigate. We regularly review false positives.
-  </Accordion>
-
-  <Accordion title="How often is the database updated?">
-    Daily. New disposable services are added automatically through community reporting and our detection algorithms.
-  </Accordion>
-
-  <Accordion title="Can users bypass detection?">
-    Sophisticated users may use lesser-known services or custom domains, but Vouch's pattern matching catches most attempts. Combine with device fingerprinting for best results.
-  </Accordion>
-
-  <Accordion title="Should I allow disposable emails for testing?">
-    Use your test API keys during development, which don't count against quotas. For staging environments, consider setting disposable to FLAG instead of BLOCK.
-  </Accordion>
-</AccordionGroup>
+<Card title="BLOCK" icon="ban" color="#ef4444">
+  Recommended to BLOCK disposable emails to maintain data quality and prevent fraud.
+</Card>
 
 ## Next Steps
 
 <CardGroup cols={2}>
   <Card title="MX Records" icon="server" href="/validation/mx-records">
-    Verify domain mail configuration
+    Verify domain mail servers
   </Card>
-  <Card title="SMTP Validation" icon="envelope" href="/validation/smtp">
-    Check if mailbox exists
-  </Card>
-  <Card title="Device Fingerprinting" icon="fingerprint" href="/validation/device-fingerprint">
-    Track multi-account abuse
-  </Card>
-  <Card title="Validation Overview" icon="shield" href="/validation/overview">
-    Back to validation overview
+  <Card title="Role Email" icon="user-group" href="/validation/role-email">
+    Detect generic organizational emails
   </Card>
 </CardGroup>

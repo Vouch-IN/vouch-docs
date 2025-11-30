@@ -5,336 +5,65 @@ description: 'Detect plus-addressing and email aliases'
 
 ## Overview
 
-Alias detection identifies plus-addressing (also called subaddressing or tagged addressing), where users add a tag to their email address like `user+tag@example.com`. This allows one email address to create unlimited variations.
+Alias detection identifies plus-addressing (also called subaddressing), where users add a tag to their email address like `user+tag@example.com`. This allows one email address to create unlimited variations.
 
 <Note>
-  Typically configured as **FLAG** since aliases can indicate multi-accounting but are also used legitimately for organization.
+  Typically configured as **FLAG** since aliases can indicate multi-accounting but are also used legitimately.
 </Note>
 
 ## What is Plus-Addressing?
 
-Plus-addressing allows users to add a tag after a `+` symbol in the local part of their email:
+Plus-addressing allows users to add a tag after a `+` symbol:
 
 ```
 user@example.com           # Base email
 user+shopping@example.com  # Shopping alias
 user+newsletter@example.com # Newsletter alias
-user+signup123@example.com  # Account-specific alias
 ```
 
-All emails sent to these addresses are delivered to the same inbox: `user@example.com`
+All these deliver to the same inbox: `user@example.com`
 
-## How It Works
+## Why It Matters
 
-### Supported Providers
+- **Multi-accounting**: Users can bypass "one account per email" limits
+- **Trial abuse**: Create unlimited free trial accounts
+- **Referral fraud**: Exploit referral programs
 
-Most major email providers support plus-addressing:
-
-| Provider | Support | Format |
-|----------|---------|--------|
-| Gmail | Yes | user+tag@gmail.com |
-| Google Workspace | Yes | user+tag@company.com |
-| Outlook | Yes | user+tag@outlook.com |
-| Microsoft 365 | Yes | user+tag@company.com |
-| iCloud | Yes | user+tag@icloud.com |
-| ProtonMail | Yes | user+tag@protonmail.com |
-| Yahoo | No | Not supported |
-| FastMail | Yes | user+tag@fastmail.com |
-
-### Alternative Formats
-
-Some providers support different alias formats:
-
-```text
-# Dot addressing (Gmail)
-john.doe@gmail.com
-johndoe@gmail.com
-j.o.h.n.d.o.e@gmail.com
-# All deliver to the same inbox
-
-# Subdomain addressing (some providers)
-user@tag.example.com
-```
-
-## Why Users Create Aliases
-
-<AccordionGroup>
-  <Accordion title="Email Organization" icon="folder">
-    Track where emails come from and filter accordingly.
-
-    ```
-    user+amazon@gmail.com → Amazon folder
-    user+newsletters@gmail.com → Newsletter folder
-    ```
-  </Accordion>
-
-  <Accordion title="Spam Tracking" icon="shield">
-    Identify which services sell or leak email addresses.
-
-    ```
-    user+service123@gmail.com
-    # If spam comes to this address, service123 leaked it
-    ```
-  </Accordion>
-
-  <Accordion title="Multiple Accounts" icon="users">
-    Bypass "one email per account" restrictions.
-
-    ```
-    user+account1@gmail.com
-    user+account2@gmail.com
-    user+account3@gmail.com
-    # All receive emails but appear as different addresses
-    ```
-  </Accordion>
-
-  <Accordion title="Trial Extensions" icon="calendar">
-    Create new trial accounts using the same base email.
-
-    ```
-    user+trial1@gmail.com
-    user+trial2@gmail.com
-    # Abuse free trials
-    ```
-  </Accordion>
-</AccordionGroup>
-
-## Validation Response
-
-### Alias Detected
+## API Response
 
 ```json
 {
-  "alias": {
-    "valid": false,
-    "action": "flag",
-    "message": "Email alias detected",
-    "baseEmail": "user@example.com",
-    "alias": "shopping",
-    "fullEmail": "user+shopping@example.com"
-  }
+  "checks": {
+    "alias": {
+      "pass": false,
+      "latency": 0.3
+    }
+  },
+  "signals": ["alias_pattern"]
 }
 ```
 
-### No Alias
+<ParamField path="pass" type="boolean">
+  `false` if plus-addressing detected, `true` if not
+</ParamField>
 
-```json
-{
-  "alias": {
-    "valid": true,
-    "action": "flag",
-    "message": "No alias detected",
-    "baseEmail": "user@example.com"
-  }
-}
-```
-
-## Legitimate vs Fraudulent Use
-
-### Legitimate Uses
-
-- Email organization and filtering
-- Identifying spam sources
-- Privacy-conscious users
-- Testing different signup flows
-
-### Fraudulent Uses
-
-- Creating multiple accounts
-- Abusing referral programs
-- Extending free trials
-- Bypassing account limits
-- Vote manipulation
+<ParamField path="latency" type="number">
+  Check execution time in milliseconds
+</ParamField>
 
 ## Configuration
 
-<Tabs>
-  <Tab title="FLAG (Recommended)">
-    Track aliases but allow them:
-
-    ```json
-    {
-      "alias": {
-        "action": "flag",
-        "stripAlias": false,
-        "checkDuplicateBase": true
-      }
-    }
-    ```
-  </Tab>
-
-  <Tab title="BLOCK (Strict)">
-    Prevent aliases entirely:
-
-    ```json
-    {
-      "alias": {
-        "action": "block",
-        "message": "Email aliases are not allowed"
-      }
-    }
-    ```
-  </Tab>
-
-  <Tab title="Advanced">
-    Check for duplicate base emails:
-
-    ```json
-    {
-      "alias": {
-        "action": "flag",
-        "checkDuplicateBase": true,
-        "blockOnDuplicateBase": true
-      }
-    }
-    ```
-
-    This blocks `user+tag2@gmail.com` if `user+tag1@gmail.com` already exists.
-  </Tab>
-</Tabs>
-
-## Handling Aliases
-
-### Normalize Emails
-
-Store both the full email and base email:
-
-```javascript
-const result = await vouch.validate('user+shopping@gmail.com');
-
-if (result.data && !result.data.checks.alias?.pass) {
-  // Alias detected
-  const fullEmail = result.data.checks.alias?.metadata?.fullEmail; // user+shopping@gmail.com
-  const baseEmail = result.data.checks.alias?.metadata?.baseEmail; // user@gmail.com
-
-  // Check if base email already exists
-  const existingUser = await db.users.findOne({
-    baseEmail: baseEmail
-  });
-
-  if (existingUser) {
-    return 'This email is already in use';
-  }
-
-  // Store both
-  await db.users.create({
-    email: fullEmail,
-    baseEmail: baseEmail
-  });
-}
-```
-
-### Gmail Dot Trick
-
-Gmail ignores dots in addresses:
-
-```javascript
-function normalizeGmail(email) {
-  const [local, domain] = email.split('@');
-
-  if (domain === 'gmail.com' || domain === 'googlemail.com') {
-    // Remove dots and anything after +
-    const normalized = local.replace(/\./g, '').split('+')[0];
-    return `${normalized}@gmail.com`;
-  }
-
-  return email;
-}
-
-// Examples:
-normalizeGmail('john.doe+tag@gmail.com') // johndoe@gmail.com
-normalizeGmail('j.o.h.n@gmail.com')      // john@gmail.com
-```
-
-## User Experience
-
-### Communicating Restrictions
-
-```jsx
-{result.data && !result.data.checks.alias?.pass && (
-  <Alert variant="info">
-    <p>Email aliases (+ addressing) detected.</p>
-    <p className="text-sm">
-      Please use your base email address: {result.data.checks.alias?.metadata?.baseEmail}
-    </p>
-  </Alert>
-)}
-```
-
-### Auto-Suggest Base Email
-
-```jsx
-{result.data && !result.data.checks.alias?.pass && (
-  <div>
-    <p>We detected an email alias.</p>
-    <Button onClick={() => setEmail(result.data.checks.alias?.metadata?.baseEmail)}>
-      Use {result.data.checks.alias?.metadata?.baseEmail} instead
-    </Button>
-  </div>
-)}
-```
-
-## Testing
-
-<CodeGroup>
-```javascript Aliases
-const aliases = [
-  'user+shopping@gmail.com',
-  'john.doe+newsletter@company.com',
-  'admin+test123@example.com'
-];
-
-for (const email of aliases) {
-  const result = await vouch.validate(email);
-  if (result.data && !result.data.checks.alias?.pass) {
-    console.log(`${email} → ${result.data.checks.alias?.metadata?.baseEmail}`);
-  }
-}
-```
-
-```javascript No Aliases
-const regular = [
-  'user@gmail.com',
-  'john.doe@company.com',
-  'admin@example.com'
-];
-
-for (const email of regular) {
-  const result = await vouch.validate(email);
-  if (result.data) {
-    console.log(`${email}: alias = ${!result.data.checks.alias?.pass}`);
-  }
-}
-```
-</CodeGroup>
-
-## Best Practices
-
-<AccordionGroup>
-  <Accordion title="Track Base Emails" icon="database">
-    Always store the base email to detect duplicate accounts using different aliases.
-  </Accordion>
-
-  <Accordion title="Don't Auto-Block" icon="shield">
-    Many legitimate users use aliases for organization. Use FLAG and combine with other signals.
-  </Accordion>
-
-  <Accordion title="Handle Gmail Dots" icon="google">
-    Remember that Gmail ignores dots. Normalize Gmail addresses to prevent duplicates.
-  </Accordion>
-
-  <Accordion title="Combine with Device Fingerprinting" icon="fingerprint">
-    Use alias detection alongside device signals to identify multi-accounting more accurately.
-  </Accordion>
-</AccordionGroup>
+<Card title="FLAG" icon="flag" color="#f59e0b">
+  Recommended to FLAG aliases since they can be legitimate but may indicate abuse.
+</Card>
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Device Fingerprinting" icon="fingerprint" href="/validation/device-fingerprint">
-    Detect multi-account abuse
+  <Card title="Device Fingerprint" icon="fingerprint" href="/validation/device-fingerprint">
+    Track multi-account abuse
   </Card>
-  <Card title="Role Email Detection" icon="user-group" href="/validation/role-email">
-    Back to role email detection
+  <Card title="Disposable" icon="trash" href="/validation/disposable">
+    Block temporary emails
   </Card>
 </CardGroup>

@@ -32,33 +32,10 @@
               "validation/syntax",
               "validation/disposable",
               "validation/mx-records",
-              "validation/smtp",
-              "validation/catchall",
               "validation/role-email",
               "validation/alias",
               "validation/device-fingerprint",
               "validation/ip-reputation"
-            ]
-          },
-          {
-            "group": "Integration Guides",
-            "pages": [
-              "guides/authentication",
-              "guides/client-vs-server",
-              "guides/rate-limits",
-              "guides/error-handling",
-              "guides/best-practices",
-              "guides/testing"
-            ]
-          },
-          {
-            "group": "Dashboard",
-            "pages": [
-              "dashboard/projects",
-              "dashboard/api-keys",
-              "dashboard/team-management",
-              "dashboard/analytics",
-              "dashboard/billing"
             ]
           }
         ]
